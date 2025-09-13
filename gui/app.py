@@ -2173,7 +2173,7 @@ def show_training():
     with col3:
         stop_button_text = "🛑 Stop Continuous Training" if st.session_state.get('training_mode') == 'continuous' else "🛑 Stop Training"
         
-        if st.button(stop_button_text, disabled=not st.session_state.training_active, width="stretch"):
+        if st.button(stop_button_text, disabled=not st.session_state.training_active, use_container_width=True):
             # For continuous training, create stop file for graceful shutdown
             if st.session_state.get('training_mode') == 'continuous':
                 try:
@@ -2206,7 +2206,7 @@ def show_training():
             st.rerun()
     
     with col4:
-        if st.button("💾 Save Checkpoint", disabled=not st.session_state.training_active, width="stretch"):
+        if st.button("💾 Save Checkpoint", disabled=not st.session_state.training_active, use_container_width=True):
             st.success("💾 Checkpoint saved!")
             st.info("Model state saved for recovery")
     
@@ -2216,7 +2216,7 @@ def show_training():
     diag_col1, diag_col2 = st.columns(2)
     
     with diag_col1:
-        if st.button("🔍 Test Training Script", width="stretch"):
+        if st.button("🔍 Test Training Script", use_container_width=True):
             with st.spinner("Testing training script availability..."):
                 # Test if the training script exists and is runnable
                 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2249,7 +2249,7 @@ def show_training():
                     st.info(f"Expected location: {train_script}")
     
     with diag_col2:
-        if st.button("🧪 Test Model Loading", width="stretch"):
+        if st.button("🧪 Test Model Loading", use_container_width=True):
             if available_models:
                 test_model = st.selectbox("Select model to test:", available_models, key="test_model")
                 
@@ -2312,20 +2312,15 @@ def show_training():
         if 'last_refresh' not in st.session_state:
             st.session_state.last_refresh = time.time()
         
-        # Auto-refresh every second as fallback
+        # Auto-refresh every second using Streamlit's built-in mechanism
         current_time = time.time()
         if current_time - st.session_state.last_refresh >= 1.0:
             st.session_state.last_refresh = current_time
-            # Use a timer to trigger rerun
-            import threading
-            def delayed_rerun():
-                time.sleep(0.1)  # Small delay to prevent race conditions
-                try:
-                    st.rerun()
-                except:
-                    pass  # Ignore errors if component is already refreshing
-            
-            threading.Thread(target=delayed_rerun, daemon=True).start()
+            # Use direct rerun without threading to avoid context issues
+            try:
+                st.rerun()
+            except Exception:
+                pass  # Ignore errors if already refreshing
         
         # Check if training process is still running
         training_process = getattr(st.session_state, 'training_process', None)
@@ -2508,7 +2503,7 @@ def show_training():
                     showlegend=True
                 )
                 
-                st.plotly_chart(fig_reward, width="stretch")
+                st.plotly_chart(fig_reward, use_container_width=True)
             
             with col2:
                 # Loss metrics
@@ -2536,7 +2531,7 @@ def show_training():
                     showlegend=True
                 )
                 
-                st.plotly_chart(fig_loss, width="stretch")
+                st.plotly_chart(fig_loss, use_container_width=True)
             
             # Current metrics with enhanced display
             if len(metrics_df) > 0:
@@ -2585,7 +2580,7 @@ def show_training():
                 help="How to name model versions"
             )
             
-            if st.button("💾 Save Current Model Version", width="stretch"):
+            if st.button("💾 Save Current Model Version", use_container_width=True):
                 if st.session_state.training_active:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     if versioning_scheme == "timestamp":
@@ -2621,7 +2616,7 @@ def show_training():
                 
                 # Model comparison option
                 if len(available_models) >= 2:
-                    if st.button("📊 Compare Model Versions", width="stretch"):
+                    if st.button("📊 Compare Model Versions", use_container_width=True):
                         st.info("🔄 Model comparison feature would show performance differences between versions")
             else:
                 st.info("💡 No model versions available yet. Train a model to see versions here.")
@@ -2912,7 +2907,7 @@ def show_backtesting():
                 
                 if all_trades:
                     trades_df = pd.DataFrame(all_trades)
-                    st.dataframe(trades_df, width="stretch", hide_index=True)
+                    st.dataframe(trades_df, use_container_width=True, hide_index=True)
                 else:
                     st.info("No trades executed during this backtest period.")
             
@@ -3041,7 +3036,7 @@ def show_live_trading():
         return ''
     
     styled_df = positions_df.style.map(style_pnl, subset=['P&L', 'P&L %'])
-    st.dataframe(styled_df, width="stretch")
+    st.dataframe(styled_df, use_container_width=True)
     
     # Real-time quotes (simulated) with enhanced styling
     st.subheader("📈 Real-Time Market Data")
@@ -3085,7 +3080,7 @@ def show_live_trading():
         return ''
     
     styled_quotes = quotes_df.style.map(style_change, subset=['Change', 'Change %']).map(style_signal, subset=['AI Signal'])
-    st.dataframe(styled_quotes, width="stretch")
+    st.dataframe(styled_quotes, use_container_width=True)
     
     # Trading controls
     st.subheader("Manual Trading")
@@ -3224,7 +3219,7 @@ ai-ppo/
         return ''
     
     styled_models = models_df.style.map(style_status, subset=['Status']).map(style_type, subset=['Type'])
-    st.dataframe(styled_models, width="stretch")
+    st.dataframe(styled_models, use_container_width=True)
     
     # Enhanced Model actions
     st.subheader("🛠️ Model Actions")
@@ -3260,7 +3255,7 @@ ai-ppo/
         col1_1, col1_2 = st.columns(2)
         
         with col1_1:
-            if st.button("📊 Analyze Model", width="stretch"):
+            if st.button("📊 Analyze Model", use_container_width=True):
                 with st.spinner(f"Analyzing {selected_model}..."):
                     time.sleep(1)  # Simulate analysis
                     st.success("✅ Model analysis complete!")
@@ -3272,10 +3267,10 @@ ai-ppo/
                             'Value': ['~850K', '10,000', '0.245', '✅ Good']
                         }
                         analysis_df = pd.DataFrame(analysis_data)
-                        st.dataframe(analysis_df, width="stretch")
+                        st.dataframe(analysis_df, use_container_width=True)
         
         with col1_2:
-            if st.button("� Load Model", width="stretch", type="primary"):
+            if st.button("� Load Model", use_container_width=True, type="primary"):
                 with st.spinner(f"Loading {selected_model}..."):
                     time.sleep(1)  # Simulate loading
                     st.success(f"✅ {selected_model} loaded successfully!")
@@ -3288,7 +3283,7 @@ ai-ppo/
             with col1_1:
                 confirm_delete = st.checkbox(f"I confirm deletion of {selected_model}")
             with col1_2:
-                if st.button("🗑️ Delete", width="stretch", disabled=not confirm_delete):
+                if st.button("🗑️ Delete", use_container_width=True, disabled=not confirm_delete):
                     st.error(f"Would delete {selected_model} (Demo mode - not actually deleted)")
     
     with col2:
@@ -3323,7 +3318,7 @@ ai-ppo/
         export_model = st.selectbox("Select Model to Export", model_files, key="export_model")
         export_format = st.selectbox("Export Format", ["PyTorch (.pt)", "ONNX (.onnx)", "Compressed (.zip)"])
         
-        if st.button("📤 Export Model", width="stretch"):
+        if st.button("📤 Export Model", use_container_width=True):
             with st.spinner(f"Exporting {export_model}..."):
                 time.sleep(2)  # Simulate export
                 st.success(f"✅ {export_model} exported successfully!")
@@ -3341,7 +3336,7 @@ ai-ppo/
             st.info(f"📁 Selected file: {uploaded_file.name}")
             st.info(f"📊 File size: {len(uploaded_file.getvalue()) / (1024*1024):.2f} MB")
             
-            if st.button("📥 Import Model", width="stretch", type="primary"):
+            if st.button("📥 Import Model", use_container_width=True, type="primary"):
                 with st.spinner("Importing model..."):
                     time.sleep(2)  # Simulate import
                     st.success(f"✅ {uploaded_file.name} imported successfully!")
@@ -3353,7 +3348,7 @@ ai-ppo/
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📦 Backup All Models", width="stretch"):
+        if st.button("📦 Backup All Models", use_container_width=True):
             with st.spinner("Creating backup..."):
                 time.sleep(3)  # Simulate backup
                 backup_name = f"model_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
@@ -3361,7 +3356,7 @@ ai-ppo/
     
     with col2:
         backup_file = st.file_uploader("Restore from Backup", type=['zip'])
-        if backup_file and st.button("🔄 Restore Backup", width="stretch"):
+        if backup_file and st.button("🔄 Restore Backup", use_container_width=True):
             with st.spinner("Restoring models..."):
                 time.sleep(3)  # Simulate restore
                 st.success("✅ Models restored successfully!")
