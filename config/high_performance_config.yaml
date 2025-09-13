@@ -1,0 +1,78 @@
+environment:
+  lookback_window: 60          # Increased for better market memory
+  max_episode_steps: 2000      # Longer episodes for more learning
+  normalize_observations: true
+  reward_scaling: 2.0          # Amplify rewards for better convergence
+
+indicators:
+  bollinger_period: 20
+  bollinger_std: 2
+  ema_periods:
+  - 12
+  - 26
+  - 50                         # Added longer EMA
+  macd_periods:
+  - 12
+  - 26
+  - 9
+  rsi_period: 14
+  sma_periods:
+  - 10
+  - 20
+  - 50
+  - 100                        # Added longer SMA
+
+logging:
+  level: INFO
+  log_to_file: true
+  use_tensorboard: true
+  use_wandb: false
+
+network:
+  activation: tanh
+  policy_layers:
+  - 512                        # Larger network for complex patterns
+  - 512
+  - 256
+  value_layers:
+  - 512
+  - 512
+  - 256
+
+paths:
+  data_dir: data
+  log_dir: logs
+  model_dir: models
+
+ppo:
+  batch_size: 128              # Larger batch for stability
+  clip_range: 0.25             # Slightly more aggressive updates
+  ent_coef: 0.02               # Higher exploration
+  gae_lambda: 0.98             # Better long-term reward estimation
+  gamma: 0.995                 # Higher discount for long-term thinking
+  learning_rate: 0.0005        # Higher learning rate for faster convergence
+  max_grad_norm: 0.5
+  n_epochs: 15                 # More epochs per update
+  n_steps: 4096                # More steps per rollout
+  vf_coef: 0.5
+
+trading:
+  initial_balance: 10000
+  max_position_size: 0.2       # Allow larger positions for higher returns
+  slippage: 0.0005
+  symbols:
+  - AAPL                       # Focus on high-performance stocks
+  - NVDA                       # Added NVIDIA for tech exposure
+  - TSLA                       # Added Tesla for volatility/growth
+  timeframe: 1h
+  transaction_cost: 0.001
+
+tradingview:
+  provider: yfinance
+
+training:
+  eval_freq: 5000              # More frequent evaluation
+  log_interval: 500            # More frequent logging
+  n_eval_episodes: 20          # More episodes for evaluation
+  save_freq: 25000             # More frequent saves
+  total_timesteps: 2000000     # Double the training time

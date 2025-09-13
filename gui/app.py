@@ -1729,7 +1729,27 @@ def show_training():
                 if process.returncode == 0:
                     st.success("🎉 Training completed successfully!")
                 else:
-                    st.error("❌ Training failed or was interrupted")
+                    st.error(f"❌ Training failed or was interrupted (Exit code: {process.returncode})")
+                    
+                    # Try to get error output from process
+                    try:
+                        if process.stderr:
+                            stderr_output = process.stderr.read()
+                            if stderr_output:
+                                st.error("**Error details:**")
+                                st.code(stderr_output, language="text")
+                    except:
+                        pass
+                    
+                    # Try to get stdout for debugging
+                    try:
+                        if process.stdout:
+                            stdout_output = process.stdout.read()
+                            if stdout_output:
+                                with st.expander("📋 Training Output (Debug)"):
+                                    st.code(stdout_output, language="text")
+                    except:
+                        pass
                 
                 # Show completion message
                 st.info("💡 Check the Models tab to see your newly trained model")
@@ -1922,6 +1942,9 @@ def show_training():
                         "--timesteps", str(additional_timesteps)
                     ]
                     
+                    # Store command for debugging
+                    st.session_state.last_training_command = cmd
+                    
                     # Start training in background
                     st.session_state.training_process = subprocess.Popen(
                         cmd,
@@ -2009,8 +2032,123 @@ def show_training():
             st.success("💾 Checkpoint saved!")
             st.info("Model state saved for recovery")
     
+    # Training Diagnostics Section
+    st.subheader("🔧 Training Diagnostics")
+    
+    diag_col1, diag_col2 = st.columns(2)
+    
+    with diag_col1:
+        if st.button("🔍 Test Training Script", use_container_width=True):
+            with st.spinner("Testing training script availability..."):
+                # Test if the training script exists and is runnable
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_dir)
+                train_script = os.path.join(project_root, "train_enhanced.py")
+                
+                if os.path.exists(train_script):
+                    st.success("✅ Training script found")
+                    
+                    # Test if we can run it with --help
+                    try:
+                        import subprocess
+                        result = subprocess.run([
+                            sys.executable, train_script, "--help"
+                        ], capture_output=True, text=True, timeout=10)
+                        
+                        if result.returncode == 0:
+                            st.success("✅ Training script is executable")
+                            with st.expander("📋 Script Help Output"):
+                                st.code(result.stdout, language="text")
+                        else:
+                            st.error("❌ Training script has issues")
+                            st.code(result.stderr, language="text")
+                    except subprocess.TimeoutExpired:
+                        st.warning("⚠️ Script test timed out")
+                    except Exception as e:
+                        st.error(f"❌ Error testing script: {e}")
+                else:
+                    st.error("❌ Training script not found")
+                    st.info(f"Expected location: {train_script}")
+    
+    with diag_col2:
+        if st.button("🧪 Test Model Loading", use_container_width=True):
+            if available_models:
+                test_model = st.selectbox("Select model to test:", available_models, key="test_model")
+                
+                with st.spinner(f"Testing model loading: {test_model}"):
+                    try:
+                        import torch
+                        model_path = os.path.join(model_dir, test_model)
+                        
+                        # Try to load the model
+                        checkpoint = torch.load(model_path, map_location='cpu')
+                        st.success("✅ Model loads successfully")
+                        
+                        # Show model info
+                        if isinstance(checkpoint, dict):
+                            st.info("📊 Model contains:")
+                            for key in checkpoint.keys():
+                                st.write(f"• {key}")
+                        else:
+                            st.info("📊 Model is a direct state dict")
+                            
+                    except Exception as e:
+                        st.error(f"❌ Model loading failed: {e}")
+            else:
+                st.info("No models available to test")
+    
+    # Show last training command for debugging
+    if hasattr(st.session_state, 'last_training_command'):
+        with st.expander("🐛 Last Training Command (Debug)"):
+            st.write("**Command executed:**")
+            st.code(" ".join(st.session_state.last_training_command), language="bash")
+            
+            # Show individual arguments for clarity
+            st.write("**Arguments breakdown:**")
+            for i, arg in enumerate(st.session_state.last_training_command):
+                st.write(f"{i}: `{arg}`")
+    
+    st.divider()
+    
     # Training progress and status
     if st.session_state.training_active:
+        # Add auto-refresh for training progress
+        import time
+        
+        # Auto-refresh mechanism using JavaScript
+        st.markdown("""
+        <script>
+        // Auto-refresh every second when training is active
+        setTimeout(function() {
+            if (document.querySelector('.training-active')) {
+                location.reload();
+            }
+        }, 1000);
+        </script>
+        <div class="training-active" style="background-color: #e8f4fd; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+            <small>🔄 Auto-refreshing every second during training...</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Fallback auto-refresh using Streamlit's rerun
+        if 'last_refresh' not in st.session_state:
+            st.session_state.last_refresh = time.time()
+        
+        # Auto-refresh every second as fallback
+        current_time = time.time()
+        if current_time - st.session_state.last_refresh >= 1.0:
+            st.session_state.last_refresh = current_time
+            # Use a timer to trigger rerun
+            import threading
+            def delayed_rerun():
+                time.sleep(0.1)  # Small delay to prevent race conditions
+                try:
+                    st.rerun()
+                except:
+                    pass  # Ignore errors if component is already refreshing
+            
+            threading.Thread(target=delayed_rerun, daemon=True).start()
+        
         # Check if training process is still running
         training_process = getattr(st.session_state, 'training_process', None)
         
@@ -2100,7 +2238,12 @@ def show_training():
             """, unsafe_allow_html=True)
         
         # Show current training info
-        with st.expander("�📊 Current Training Session", expanded=True):
+        with st.expander("📊 Current Training Session", expanded=True):
+            # Add timestamp of last update
+            from datetime import datetime
+            current_timestamp = datetime.now().strftime("%H:%M:%S")
+            st.caption(f"Last updated: {current_timestamp}")
+            
             col1, col2, col3 = st.columns(3)
             
             with col1:
