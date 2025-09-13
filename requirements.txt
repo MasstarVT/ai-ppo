@@ -9,14 +9,13 @@ pandas>=2.0.0
 scipy>=1.10.0
 
 # Data processing and technical analysis
-ta-lib>=0.4.0
+TA-Lib>=0.4.0
 yfinance>=0.2.0
 websocket-client>=1.6.0
 requests>=2.31.0
 
 # Visualization and logging
 tensorboard>=2.13.0
-wandb>=0.15.0
 plotly>=5.15.0
 
 # Configuration and utilities
@@ -35,6 +34,5 @@ mypy>=1.4.0
 streamlit>=1.28.0
 streamlit-option-menu>=0.3.6
 streamlit-aggrid>=0.3.4
-streamlit-plotly>=0.1.0
 dash>=2.14.0
 dash-bootstrap-components>=1.5.0

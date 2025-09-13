@@ -1,10 +1,10 @@
 """
 Trading environment for reinforcement learning.
-Implements a gym-compatible environment for stock trading.
+Implements a gymnasium-compatible environment for stock trading.
 """
 
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
