@@ -1,34 +1,21 @@
-# AI PPO Trading Bot
+# AI PPO Trading System
 
-A reinforcement learning trading bot that uses Proximal Policy Optimization (PPO) to learn trading strategies from TradingView API data.
+A sophisticated Proximal Policy Optimization (PPO) reinforcement learning system for automated stock trading. This system learns to trade stocks using historical market data and technical indicators.
 
 ## Features
 
-- PPO-based reinforcement learning for trading
-- TradingView API integration for real-time market data
-- Comprehensive backtesting and performance analysis
-- Technical indicator integration
-- Risk management and portfolio optimization
-- Real-time trading visualization
+- **Reinforcement Learning**: Uses PPO algorithm for learning optimal trading strategies
+- **Data Integration**: Supports multiple data sources (Yahoo Finance, Alpha Vantage, Polygon)
+- **Technical Indicators**: 20+ built-in technical indicators (SMA, EMA, RSI, MACD, etc.)
+- **Risk Management**: Built-in position sizing and risk controls
+- **Backtesting**: Comprehensive backtesting with walk-forward analysis
+- **Visualization**: Rich plotting and analysis tools
+- **Configuration**: Flexible YAML/JSON configuration system
+- **Web GUI**: Modern Streamlit-based dashboard for training, backtesting, and monitoring
 
-## Project Structure
+## Quick Start
 
-```
-ai-ppo/
-├── src/                    # Source code
-│   ├── agents/            # PPO agent implementation
-│   ├── environments/      # Trading environment
-│   ├── data/             # Data fetching and processing
-│   ├── utils/            # Utility functions
-│   └── visualization/    # Plotting and analysis tools
-├── config/               # Configuration files
-├── data/                # Historical data storage
-├── models/              # Trained model checkpoints
-├── logs/                # Training logs and metrics
-└── tests/               # Unit tests
-```
-
-## Installation
+### Installation
 
 1. Clone the repository:
 ```bash
@@ -41,13 +28,53 @@ cd ai-ppo
 pip install -r requirements.txt
 ```
 
-3. Set up configuration:
+3. Run setup to verify installation:
 ```bash
-cp config/config_template.yaml config/config.yaml
-# Edit config.yaml with your API credentials and preferences
+python setup.py
 ```
 
-## Usage
+### Web GUI (Recommended)
+
+Launch the web-based dashboard:
+```bash
+cd gui
+python run_gui.py
+```
+
+Or directly with Streamlit:
+```bash
+streamlit run gui/app.py
+```
+
+The GUI provides an intuitive interface for:
+- Configuration management
+- Data analysis and visualization
+- Model training with real-time metrics
+- Backtesting with performance charts
+- Live trading monitoring (paper trading supported)
+- Model management and comparison
+
+### Command Line Usage
+
+1. **Configure the system**:
+```bash
+python -c "from src.utils import create_default_config; create_default_config('config/config.yaml')"
+```
+
+2. **Run a demo**:
+```bash
+python demo.py
+```
+
+3. **Train a model**:
+```bash
+python src/train.py
+```
+
+4. **Run backtesting**:
+```bash
+python src/backtest.py
+```
 
 ### Training
 ```bash
