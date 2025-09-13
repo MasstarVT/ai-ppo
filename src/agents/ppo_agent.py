@@ -220,7 +220,17 @@ class PPOAgent:
         
         # Device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        logger.info(f"Using device: {self.device}")
+        
+        # Enhanced GPU logging
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            logger.info(f"Using GPU: {gpu_name} ({gpu_memory:.1f} GB)")
+            logger.info(f"CUDA version: {torch.version.cuda}")
+        else:
+            logger.info("Using CPU - consider installing CUDA for faster training")
+        
+        logger.info(f"PyTorch device: {self.device}")
         
         # Networks
         self.policy_net = PolicyNetwork(obs_dim, policy_layers, action_dim, activation).to(self.device)
@@ -247,7 +257,7 @@ class PPOAgent:
     def get_action(self, obs: np.ndarray, deterministic: bool = False) -> Tuple[int, float, float]:
         """Get action from policy."""
         with torch.no_grad():
-            obs_tensor = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
+            obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
             if obs_tensor.dim() == 1:
                 obs_tensor = obs_tensor.unsqueeze(0)
             
@@ -272,7 +282,7 @@ class PPOAgent:
     def finish_episode(self, last_obs: np.ndarray):
         """Finish episode and calculate advantages."""
         with torch.no_grad():
-            last_value = self.value_net(torch.as_tensor(last_obs, dtype=torch.float32).to(self.device))
+            last_value = self.value_net(torch.as_tensor(last_obs, dtype=torch.float32, device=self.device))
             last_value = last_value.cpu().numpy()[0]
         
         self.buffer.finish_path(last_value)
@@ -281,9 +291,9 @@ class PPOAgent:
         """Update policy and value networks."""
         data = self.buffer.get()
         
-        # Move to device
+        # Move to device with non_blocking for better GPU performance
         for key in data:
-            data[key] = data[key].to(self.device)
+            data[key] = data[key].to(self.device, non_blocking=True)
         
         # Training loop
         total_policy_loss = 0
@@ -292,8 +302,8 @@ class PPOAgent:
         total_kl = 0
         
         for epoch in range(self.n_epochs):
-            # Create mini-batches
-            batch_indices = torch.randperm(self.n_steps)
+            # Create mini-batches on GPU if available
+            batch_indices = torch.randperm(self.n_steps, device=self.device)
             
             for start_idx in range(0, self.n_steps, self.batch_size):
                 end_idx = min(start_idx + self.batch_size, self.n_steps)
@@ -363,6 +373,10 @@ class PPOAgent:
         self.training_stats['value_loss'].append(avg_value_loss)
         self.training_stats['entropy'].append(avg_entropy)
         self.training_stats['kl_divergence'].append(avg_kl)
+        
+        # Clear GPU cache periodically to prevent memory buildup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         return {
             'policy_loss': avg_policy_loss,
