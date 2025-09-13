@@ -9,28 +9,61 @@ import torch
 import numpy as np
 import argparse
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
+
+# Set up comprehensive debug logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('logs/training_debug.log', mode='a')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+print("🐛 DEBUG MODE ENABLED - Enhanced Training Script")
+logger.debug("=== TRAINING SCRIPT STARTUP ===")
 
 # Fix encoding issues on Windows
 if sys.platform == "win32":
     import codecs
     sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
     sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+    logger.debug("Windows encoding configured")
 
 # Add src to path
 current_dir = Path(__file__).parent
 src_path = current_dir / "src"
 sys.path.insert(0, str(src_path))
 
+logger.debug(f"Current directory: {current_dir}")
+logger.debug(f"Source path: {src_path}")
+logger.debug(f"Python path: {sys.path[:3]}...")  # Show first 3 paths
+
+print("🔄 Importing trading system modules...")
+logger.debug("Starting module imports")
+
 try:
+    logger.debug("Importing PPOAgent...")
     from agents.ppo_agent import PPOAgent
+    
+    logger.debug("Importing TradingEnvironment...")
     from environments.trading_env import TradingEnvironment
+    
+    logger.debug("Importing DataClient...")
     from data.data_client import DataClient
+    
+    logger.debug("Importing utilities...")
     from utils.config import ConfigManager, create_default_config
+    
     print("✅ All modules imported successfully")
+    logger.debug("All modules imported successfully")
 except ImportError as e:
     print(f"❌ Import error: {e}")
+    logger.error(f"Import error: {e}")
     print("💡 Make sure all dependencies are installed: pip install -r requirements.txt")
     sys.exit(1)
 
@@ -44,27 +77,42 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
         config (dict): Optional training configuration
         save_path (str): Path to save the continued model
     """
+    logger.debug("=== CONTINUE TRAINING START ===")
     print(f"🔄 Starting continued training from: {model_path}")
     print(f"📊 Additional timesteps: {additional_timesteps:,}")
     
+    logger.debug(f"Model path: {model_path}")
+    logger.debug(f"Additional timesteps: {additional_timesteps}")
+    logger.debug(f"Config provided: {config is not None}")
+    logger.debug(f"Save path: {save_path}")
+    
     # Load the existing model
     if not os.path.exists(model_path):
+        logger.error(f"Model file not found: {model_path}")
         raise FileNotFoundError(f"Model file not found: {model_path}")
     
     print("📥 Loading existing model...")
+    logger.debug("Attempting to load model checkpoint")
+    
     try:
         # Load the model state
         checkpoint = torch.load(model_path, map_location='cpu')
         print(f"✅ Model loaded successfully")
+        logger.debug(f"Model checkpoint loaded, type: {type(checkpoint)}")
         
         # Extract model info if available
         if isinstance(checkpoint, dict):
             print("📊 Model information:")
+            logger.debug("Displaying model information:")
             for key in ['total_timesteps', 'episode_count', 'best_reward']:
                 if key in checkpoint:
                     print(f"  • {key}: {checkpoint[key]}")
+                    logger.debug(f"  Model info - {key}: {checkpoint[key]}")
         
     except Exception as e:
+        logger.error(f"Failed to load model: {e}")
+        print(f"❌ Failed to load model: {e}")
+        raise
         print(f"❌ Error loading model: {e}")
         return False
     

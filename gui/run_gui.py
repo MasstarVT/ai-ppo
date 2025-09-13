@@ -11,6 +11,14 @@ import subprocess
 import time
 import socket
 
+# Import and setup debug logging
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from debug_config import setup_debug_logging
+
+print("🐛 Setting up debug logging...")
+setup_debug_logging()
+print("✅ Debug logging initialized")
+
 def is_port_in_use(port):
     """Check if a port is already in use."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

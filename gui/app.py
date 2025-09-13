@@ -16,9 +16,27 @@ import threading
 import queue
 import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Set up comprehensive debug logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('logs/gui_debug.log', mode='a')
+    ]
+)
 logger = logging.getLogger(__name__)
+
+# Enable debug mode for key components
+logging.getLogger('data').setLevel(logging.DEBUG)
+logging.getLogger('training').setLevel(logging.DEBUG)
+logging.getLogger('streamlit').setLevel(logging.INFO)  # Reduce streamlit noise
+
+print("🐛 DEBUG MODE ENABLED - Starting AI PPO Trading GUI...")
+logger.debug("=== GUI APPLICATION STARTUP ===")
+logger.debug(f"Python version: {sys.version}")
+logger.debug(f"Working directory: {os.getcwd()}")
+logger.debug(f"GUI file location: {__file__}")
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -33,18 +51,41 @@ IMPORT_ERROR = None
 # Test yaml import first
 try:
     import yaml
+    print("✅ YAML module imported successfully")
+    logger.debug("YAML import successful")
     st.success("✅ YAML module imported successfully")
 except ImportError as e:
+    print(f"❌ YAML import failed: {e}")
+    logger.error(f"YAML import failed: {e}")
     st.error(f"❌ YAML import failed: {e}")
     st.info("💡 Please install PyYAML: `pip install PyYAML`")
     IMPORT_ERROR = f"YAML import error: {e}"
 
+print("🔄 Importing trading system components...")
+logger.debug("Starting import of trading system components")
+
 try:
+    logger.debug("Importing data components...")
     from data import DataClient, prepare_features
+    logger.debug("Data components imported successfully")
+    
+    logger.debug("Importing environment components...")
     from environments import TradingEnvironment
+    logger.debug("Environment components imported successfully")
+    
+    logger.debug("Importing agent components...")
     from agents import PPOAgent
+    logger.debug("Agent components imported successfully")
+    
+    logger.debug("Importing evaluation components...")
     from evaluation.backtesting import Backtester
+    logger.debug("Evaluation components imported successfully")
+    
+    logger.debug("Importing utility components...")
     from utils import ConfigManager, create_default_config, format_currency, format_percentage
+    logger.debug("Utility components imported successfully")
+    
+    print("✅ Core trading components imported successfully")
     
     # Try to import training manager (requires torch/numpy)
     try:
@@ -904,13 +945,20 @@ def get_light_theme_css():
 
 def main():
     """Main application function."""
+    print("🚀 Starting main GUI application...")
+    logger.debug("=== MAIN APPLICATION START ===")
     
     # Check system status first
+    logger.debug("Checking system status...")
     if not show_system_status():
+        logger.warning("System status check failed, returning early")
         return
+    
+    logger.debug("System status OK, proceeding with GUI initialization")
     
     # Sidebar navigation
     with st.sidebar:
+        logger.debug("Rendering sidebar navigation")
         st.image("https://via.placeholder.com/200x80/1f77b4/ffffff?text=AI+PPO+Trading", width=200)
         
         # Theme toggle button
@@ -920,7 +968,10 @@ def main():
             st.write("**Theme:**")
         with col2:
             if st.button(f"{'🌞' if st.session_state.theme == 'dark' else '🌙'}"):
+                old_theme = st.session_state.theme
                 st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
+                print(f"🎨 Theme changed from {old_theme} to {st.session_state.theme}")
+                logger.debug(f"Theme toggled: {old_theme} -> {st.session_state.theme}")
                 st.rerun()
         
         st.divider()
@@ -949,6 +1000,9 @@ def main():
             default_index=0,
         )
         
+        print(f"📄 Page selected: {selected}")
+        logger.debug(f"Navigation: User selected page '{selected}'")
+        
         # System status
         st.markdown("---")
         st.markdown("### System Status")
@@ -956,6 +1010,8 @@ def main():
         # Check if models exist
         model_dir = "models"
         models_exist = os.path.exists(model_dir) and len([f for f in os.listdir(model_dir) if f.endswith('.pt')]) > 0
+        logger.debug(f"Model directory check: exists={os.path.exists(model_dir)}, models_exist={models_exist}")
+        
         
         if models_exist:
             st.success("✅ Models Available")
@@ -976,27 +1032,48 @@ def main():
             st.info("⏸️ Training Idle")
 
     # Main content based on selection
+    logger.debug(f"=== ROUTING TO PAGE: {selected} ===")
+    print(f"🔄 Loading page: {selected}")
+    
     if selected == "Dashboard":
+        logger.debug("Routing to Dashboard")
         show_dashboard()
     elif selected == "Configuration":
+        logger.debug("Routing to Configuration")
         show_configuration()
     elif selected == "Data Analysis":
+        logger.debug("Routing to Data Analysis")
         show_data_analysis()
     elif selected == "Training":
+        logger.debug("Routing to Training")
         show_training()
     elif selected == "Backtesting":
+        logger.debug("Routing to Backtesting")
         show_backtesting()
     elif selected == "Live Trading":
+        logger.debug("Routing to Live Trading")
         show_live_trading()
     elif selected == "Model Management":
+        logger.debug("Routing to Model Management")
         show_model_management()
+    else:
+        logger.warning(f"Unknown page selected: {selected}")
+        st.error(f"Unknown page: {selected}")
+    
+    logger.debug(f"=== PAGE {selected} RENDERED ===")
+    print(f"✅ Page {selected} loaded successfully")
 
 @handle_errors
 def show_dashboard():
     """Show main dashboard."""
+    logger.debug("=== DASHBOARD PAGE START ===")
+    print("📊 Loading Dashboard page...")
+    
     st.title("📈 AI PPO Trading System Dashboard")
+    logger.debug("Dashboard title rendered")
     
     # Key metrics row
+    logger.debug("Rendering metrics columns")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -1472,19 +1549,32 @@ def show_training():
     import subprocess
     import sys
     
+    logger.debug("=== TRAINING PAGE START ===")
+    print("🎯 Loading Training page...")
+    
     st.title("🎯 Model Training")
+    logger.debug("Training page title rendered")
     
     # Get available models for continuing training
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     model_dir = os.path.join(project_root, "models")
     
+    logger.debug(f"Checking for models in: {model_dir}")
+    print(f"📁 Checking models directory: {model_dir}")
+    
     available_models = []
     if os.path.exists(model_dir):
         available_models = [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+        logger.debug(f"Found {len(available_models)} available models: {available_models}")
+        print(f"📋 Found {len(available_models)} existing models")
+    else:
+        logger.debug("Models directory does not exist")
+        print("📁 Models directory not found")
     
     # Training mode selection
     st.subheader("🎯 Training Mode")
+    logger.debug("Rendering training mode selection")
     
     col1, col2 = st.columns(2)
     
@@ -1746,6 +1836,7 @@ def show_training():
                 with col2:
                     # Calculate estimated progress (simplified)
                     import time
+                    elapsed = 0  # Initialize elapsed time
                     if hasattr(st.session_state, 'training_start_time'):
                         elapsed = time.time() - st.session_state.training_start_time
                         st.metric("Elapsed Time", f"{int(elapsed//60)}:{int(elapsed%60):02d}")
@@ -1763,7 +1854,7 @@ def show_training():
                         st.metric("Estimated Progress", "Calculating...")
                 
                 # Progress bar
-                progress = min(95, (elapsed / 3600) * 20) if 'elapsed' in locals() and elapsed > 60 else 0
+                progress = min(95, (elapsed / 3600) * 20) if elapsed > 60 else 0
                 st.progress(progress / 100.0)
                 
                 # Control buttons
