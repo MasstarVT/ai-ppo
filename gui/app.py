@@ -1552,6 +1552,15 @@ def show_training():
     logger.debug("=== TRAINING PAGE START ===")
     print("🎯 Loading Training page...")
     
+    # Debug: Test datetime availability
+    try:
+        test_datetime = datetime.now()
+        logger.debug(f"Datetime module available: {test_datetime}")
+        print(f"✅ Datetime module working: {test_datetime.strftime('%H:%M:%S')}")
+    except Exception as e:
+        logger.error(f"Datetime module error: {e}")
+        print(f"❌ Datetime module error: {e}")
+    
     st.title("🎯 Model Training")
     logger.debug("Training page title rendered")
     
@@ -2479,7 +2488,6 @@ def show_training():
         # Show current training info
         with st.expander("📊 Current Training Session", expanded=True):
             # Add timestamp of last update
-            from datetime import datetime
             current_timestamp = datetime.now().strftime("%H:%M:%S")
             st.caption(f"Last updated: {current_timestamp}")
             
