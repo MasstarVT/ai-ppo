@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced training script that supports continuing training from existing models.
+Enhanced that supports continuing training from existing models.
 """
 
 import os
@@ -23,7 +23,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-print("� Enhanced Training Script Starting...")
+print("=== Enhanced Training Script Starting...")
+
+# Fix encoding issues on Windows  
+if sys.platform == "win32":
+    import codecs
+    import locale
+    try:
+        # Set console encoding to UTF-8
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach(), errors='replace')
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach(), errors='replace')
+    except Exception:
+        # Fallback if encoding setup fails
+        pass
+
+print("*** Enhanced Training Script Starting...")
 
 # Fix encoding issues on Windows
 if sys.platform == "win32":
@@ -36,16 +50,16 @@ current_dir = Path(__file__).parent
 src_path = current_dir / "src"
 sys.path.insert(0, str(src_path))
 
-print("🔄 Loading modules...")
+print(">>> Loading modules...")
 
 try:
     from agents.ppo_agent import PPOAgent
     from environments.trading_env import TradingEnvironment
     from data.data_client import DataClient
     from utils.config import ConfigManager, create_default_config
-    print("✅ All modules loaded")
+    print("[OK] All modules loaded")
 except ImportError as e:
-    print(f"❌ Import error: {e}")
+    print(f"[ERROR] Import error: {e}")
     sys.exit(1)
 
 def continue_training(model_path, additional_timesteps, config=None, save_path=None):
@@ -59,8 +73,8 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
         save_path (str): Path to save the continued model
     """
     logger.debug("=== CONTINUE TRAINING START ===")
-    print(f"🔄 Starting continued training from: {model_path}")
-    print(f"📊 Additional timesteps: {additional_timesteps:,}")
+    print(f">>> Starting continued training from: {model_path}")
+    print(f"[INFO] Additional timesteps: {additional_timesteps:,}")
     
     logger.debug(f"Model path: {model_path}")
     logger.debug(f"Additional timesteps: {additional_timesteps}")
@@ -72,36 +86,36 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
         logger.error(f"Model file not found: {model_path}")
         raise FileNotFoundError(f"Model file not found: {model_path}")
     
-    print("📥 Loading existing model...")
+    print("[LOAD] Loading existing model...")
     logger.debug("Attempting to load model checkpoint")
     
     try:
         # Load the model state
         checkpoint = torch.load(model_path, map_location='cpu')
-        print(f"✅ Model loaded successfully")
+        print(f"[OK] Model loaded successfully")
         logger.debug(f"Model checkpoint loaded, type: {type(checkpoint)}")
         
         # Extract model info if available
         if isinstance(checkpoint, dict):
-            print("📊 Model information:")
+            print("[INFO] Model information:")
             logger.debug("Displaying model information:")
             for key in ['total_timesteps', 'episode_count', 'best_reward']:
                 if key in checkpoint:
-                    print(f"  • {key}: {checkpoint[key]}")
+                    print(f"  - {key}: {checkpoint[key]}")
                     logger.debug(f"  Model info - {key}: {checkpoint[key]}")
         
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
-        print(f"❌ Failed to load model: {e}")
+        print(f"[ERROR] Failed to load model: {e}")
         raise
-        print(f"❌ Error loading model: {e}")
+        print(f"[ERROR] Error loading model: {e}")
         return False
     
     # Setup configuration
     if config is None:
         config = create_default_config()
     
-    print("🏗️ Setting up training environment...")
+    print("[SETUP] Setting up training environment...")
     
     # Load training data
     try:
@@ -116,7 +130,7 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
         period = config.get('training', {}).get('data_period', '1y')
         interval = config.get('trading', {}).get('timeframe', '1h')
         
-        print(f"📈 Loading data for symbols: {symbols}")
+        print(f"[DATA] Loading data for symbols: {symbols}")
         
         # Fetch data for training
         raw_data = data_client.get_multiple_symbols_data(symbols, period, interval)
@@ -130,22 +144,22 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
             symbol = list(raw_data.keys())[0]
         
         df = raw_data[symbol]
-        print(f"📊 Loaded {len(df)} bars for {symbol}")
+        print(f"[INFO] Loaded {len(df)} bars for {symbol}")
         
         # Prepare features
         data = prepare_features(df, config)
-        print(f"✅ Prepared {len(data)} feature bars")
+        print(f"[OK] Prepared {len(data)} feature bars")
         
     except Exception as e:
-        print(f"❌ Error loading data: {e}")
+        print(f"[ERROR] Error loading data: {e}")
         return False
     
     # Create environment
     try:
         env = TradingEnvironment(data, config)
-        print("✅ Trading environment created")
+        print("[OK] Trading environment created")
     except Exception as e:
-        print(f"❌ Error creating environment: {e}")
+        print(f"[ERROR] Error creating environment: {e}")
         return False
     
     # Create or load agent
@@ -164,30 +178,30 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
                 agent.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
                 if hasattr(agent, 'value_net') and 'value_net_state_dict' in checkpoint:
                     agent.value_net.load_state_dict(checkpoint['value_net_state_dict'])
-                print("✅ Model weights loaded from policy_net_state_dict format")
+                print("[OK] Model weights loaded from policy_net_state_dict format")
             elif 'model_state_dict' in checkpoint:
                 # Legacy format with single model state dict
                 agent.policy_net.load_state_dict(checkpoint['model_state_dict'])
-                print("✅ Model weights loaded from model_state_dict format")
+                print("[OK] Model weights loaded from model_state_dict format")
             else:
                 # Assume the checkpoint is just the model state dict
                 agent.policy_net.load_state_dict(checkpoint)
-                print("✅ Model weights loaded from direct state dict")
+                print("[OK] Model weights loaded from direct state dict")
         else:
             # Checkpoint is directly a state dict
             agent.policy_net.load_state_dict(checkpoint)
-            print("✅ Model weights loaded from direct state dict")
+            print("[OK] Model weights loaded from direct state dict")
             
     except Exception as e:
-        print(f"❌ Error setting up agent: {e}")
+        print(f"[ERROR] Error setting up agent: {e}")
         return False
     
     # Start continued training
-    print("🚀 Starting continued training...")
+    print("[START] Starting continued training...")
     
     try:
         # Simulate training (in a real implementation, this would be actual training)
-        print("📈 Training progress:")
+        print("[DATA] Training progress:")
         for step in range(0, additional_timesteps, 1000):
             progress = (step / additional_timesteps) * 100
             print(f"  Step {step:6d}/{additional_timesteps} ({progress:5.1f}%)")
@@ -196,7 +210,7 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
             import time
             time.sleep(0.1)
         
-        print("✅ Continued training completed!")
+        print("[OK] Continued training completed!")
         
         # Save the updated model
         if save_path is None:
@@ -220,12 +234,12 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
             save_checkpoint['value_net_state_dict'] = agent.value_net.state_dict()
         
         torch.save(save_checkpoint, save_path)
-        print(f"💾 Updated model saved to: {save_path}")
+        print(f"[SAVE] Updated model saved to: {save_path}")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error during training: {e}")
+        print(f"[ERROR] Error during training: {e}")
         return False
 
 def train_new_model(timesteps, config=None, save_path=None):
@@ -237,14 +251,14 @@ def train_new_model(timesteps, config=None, save_path=None):
         config (dict): Training configuration
         save_path (str): Path to save the new model
     """
-    print(f"🆕 Starting new model training")
-    print(f"📊 Total timesteps: {timesteps:,}")
+    print(f"[NEW] Starting new model training")
+    print(f"[INFO] Total timesteps: {timesteps:,}")
     
     # Setup configuration
     if config is None:
         config = create_default_config()
     
-    print("🏗️ Setting up training environment...")
+    print("[SETUP] Setting up training environment...")
     
     # Load training data
     try:
@@ -259,7 +273,7 @@ def train_new_model(timesteps, config=None, save_path=None):
         period = config.get('training', {}).get('data_period', '1y')
         interval = config.get('trading', {}).get('timeframe', '1h')
         
-        print(f"📈 Loading data for symbols: {symbols}")
+        print(f"[DATA] Loading data for symbols: {symbols}")
         
         # Fetch data for training
         raw_data = data_client.get_multiple_symbols_data(symbols, period, interval)
@@ -273,22 +287,22 @@ def train_new_model(timesteps, config=None, save_path=None):
             symbol = list(raw_data.keys())[0]
         
         df = raw_data[symbol]
-        print(f"📊 Loaded {len(df)} bars for {symbol}")
+        print(f"[INFO] Loaded {len(df)} bars for {symbol}")
         
         # Prepare features
         data = prepare_features(df, config)
-        print(f"✅ Prepared {len(data)} feature bars")
+        print(f"[OK] Prepared {len(data)} feature bars")
         
     except Exception as e:
-        print(f"❌ Error loading data: {e}")
+        print(f"[ERROR] Error loading data: {e}")
         return False
     
     # Create environment
     try:
         env = TradingEnvironment(data, config)
-        print("✅ Trading environment created")
+        print("[OK] Trading environment created")
     except Exception as e:
-        print(f"❌ Error creating environment: {e}")
+        print(f"[ERROR] Error creating environment: {e}")
         return False
     
     # Create agent
@@ -298,17 +312,17 @@ def train_new_model(timesteps, config=None, save_path=None):
         action_dim = env.action_space.n
         
         agent = PPOAgent(obs_dim, action_dim, config)
-        print("✅ PPO agent created")
+        print("[OK] PPO agent created")
     except Exception as e:
-        print(f"❌ Error creating agent: {e}")
+        print(f"[ERROR] Error creating agent: {e}")
         return False
     
     # Start training
-    print("🚀 Starting training...")
+    print("[START] Starting training...")
     
     try:
         # Simulate training
-        print("📈 Training progress:")
+        print("[DATA] Training progress:")
         for step in range(0, timesteps, 1000):
             progress = (step / timesteps) * 100
             print(f"  Step {step:6d}/{timesteps} ({progress:5.1f}%)")
@@ -317,7 +331,7 @@ def train_new_model(timesteps, config=None, save_path=None):
             import time
             time.sleep(0.1)
         
-        print("✅ Training completed!")
+        print("[OK] Training completed!")
         
         # Save the model
         if save_path is None:
@@ -340,12 +354,12 @@ def train_new_model(timesteps, config=None, save_path=None):
             save_checkpoint['value_net_state_dict'] = agent.value_net.state_dict()
         
         torch.save(save_checkpoint, save_path)
-        print(f"💾 New model saved to: {save_path}")
+        print(f"[SAVE] New model saved to: {save_path}")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error during training: {e}")
+        print(f"[ERROR] Error during training: {e}")
         return False
 
 def continuous_training(model_path, config=None, save_interval=50000, checkpoint_interval=10000):
@@ -358,23 +372,23 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         save_interval (int): How often to save the model (in timesteps)
         checkpoint_interval (int): How often to create checkpoint saves
     """
-    print("🔄 Starting continuous training mode...")
-    print("⚠️  Press Ctrl+C to stop training")
-    print(f"📊 Save interval: {save_interval:,} timesteps")
-    print(f"💾 Checkpoint interval: {checkpoint_interval:,} timesteps")
+    print(">>> Starting continuous training mode...")
+    print("[WARNING]  Press Ctrl+C to stop training")
+    print(f"[INFO] Save interval: {save_interval:,} timesteps")
+    print(f"[SAVE] Checkpoint interval: {checkpoint_interval:,} timesteps")
     
     # Create stop file path for graceful shutdown
     stop_file = "stop_training.txt"
     if os.path.exists(stop_file):
         os.remove(stop_file)
     
-    print(f"💡 Alternative stop method: Create file '{stop_file}' to stop training gracefully")
+    print(f"[INFO] Alternative stop method: Create file '{stop_file}' to stop training gracefully")
     
     # Setup configuration
     if config is None:
         config = create_default_config()
     
-    print("🏗️ Setting up training environment...")
+    print("[SETUP] Setting up training environment...")
     
     # Load training data
     try:
@@ -389,7 +403,7 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         period = config.get('training', {}).get('data_period', '1y')
         interval = config.get('trading', {}).get('timeframe', '1h')
         
-        print(f"📈 Loading data for symbols: {symbols}")
+        print(f"[DATA] Loading data for symbols: {symbols}")
         
         # Fetch data for training
         raw_data = data_client.get_multiple_symbols_data(symbols, period, interval)
@@ -403,22 +417,22 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
             symbol = list(raw_data.keys())[0]
         
         df = raw_data[symbol]
-        print(f"📊 Loaded {len(df)} bars for {symbol}")
+        print(f"[INFO] Loaded {len(df)} bars for {symbol}")
         
         # Prepare features
         data = prepare_features(df, config)
-        print(f"✅ Prepared {len(data)} feature bars")
+        print(f"[OK] Prepared {len(data)} feature bars")
         
     except Exception as e:
-        print(f"❌ Error loading data: {e}")
+        print(f"[ERROR] Error loading data: {e}")
         return False
     
     # Create environment
     try:
         env = TradingEnvironment(data, config)
-        print("✅ Trading environment created")
+        print("[OK] Trading environment created")
     except Exception as e:
-        print(f"❌ Error creating environment: {e}")
+        print(f"[ERROR] Error creating environment: {e}")
         return False
     
     # Create or load agent
@@ -432,7 +446,7 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         
         # Load existing model if provided
         if model_path and os.path.exists(model_path):
-            print(f"📥 Loading existing model from: {model_path}")
+            print(f"[LOAD] Loading existing model from: {model_path}")
             checkpoint = torch.load(model_path, map_location='cpu')
             
             if isinstance(checkpoint, dict):
@@ -440,23 +454,23 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
                     agent.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
                     if hasattr(agent, 'value_net') and 'value_net_state_dict' in checkpoint:
                         agent.value_net.load_state_dict(checkpoint['value_net_state_dict'])
-                    print("✅ Model weights loaded from policy_net_state_dict format")
+                    print("[OK] Model weights loaded from policy_net_state_dict format")
                 elif 'model_state_dict' in checkpoint:
                     agent.policy_net.load_state_dict(checkpoint['model_state_dict'])
-                    print("✅ Model weights loaded from model_state_dict format")
+                    print("[OK] Model weights loaded from model_state_dict format")
                 
                 # Get previous training progress
                 total_trained_timesteps = checkpoint.get('total_timesteps', 0)
-                print(f"📊 Previously trained timesteps: {total_trained_timesteps:,}")
+                print(f"[INFO] Previously trained timesteps: {total_trained_timesteps:,}")
             
-        print("✅ PPO agent ready")
+        print("[OK] PPO agent ready")
     except Exception as e:
-        print(f"❌ Error setting up agent: {e}")
+        print(f"[ERROR] Error setting up agent: {e}")
         return False
     
     # Start continuous training
-    print("🚀 Starting continuous training...")
-    print("📈 Training progress (continuous mode):")
+    print("[START] Starting continuous training...")
+    print("[DATA] Training progress (continuous mode):")
     
     current_timesteps = 0
     iteration = 0
@@ -465,7 +479,7 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         while True:
             # Check for stop conditions
             if os.path.exists(stop_file):
-                print(f"\n🛑 Stop file '{stop_file}' detected. Stopping training gracefully...")
+                print(f"\n[STOP] Stop file '{stop_file}' detected. Stopping training gracefully...")
                 os.remove(stop_file)
                 break
             
@@ -504,7 +518,7 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
                     save_checkpoint['value_net_state_dict'] = agent.value_net.state_dict()
                 
                 torch.save(save_checkpoint, save_path)
-                print(f"💾 Model saved: {save_path}")
+                print(f"[SAVE] Model saved: {save_path}")
             
             # Create checkpoint at intervals (keep recent models)
             if current_timesteps % checkpoint_interval == 0:
@@ -523,13 +537,13 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
                     checkpoint_data['value_net_state_dict'] = agent.value_net.state_dict()
                 
                 torch.save(checkpoint_data, checkpoint_path)
-                print(f"💾 Checkpoint saved: {checkpoint_path}")
+                print(f"[SAVE] Checkpoint saved: {checkpoint_path}")
     
     except KeyboardInterrupt:
-        print(f"\n🛑 Training stopped by user (Ctrl+C)")
+        print(f"\n[STOP] Training stopped by user (Ctrl+C)")
     
     except Exception as e:
-        print(f"\n❌ Error during continuous training: {e}")
+        print(f"\n[ERROR] Error during continuous training: {e}")
         return False
     
     # Save final model
@@ -554,9 +568,9 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         final_checkpoint['value_net_state_dict'] = agent.value_net.state_dict()
     
     torch.save(final_checkpoint, final_save_path)
-    print(f"💾 Final model saved: {final_save_path}")
-    print(f"📊 Total timesteps trained: {total_trained_timesteps + current_timesteps:,}")
-    print("✅ Continuous training completed!")
+    print(f"[SAVE] Final model saved: {final_save_path}")
+    print(f"[INFO] Total timesteps trained: {total_trained_timesteps + current_timesteps:,}")
+    print("[OK] Continuous training completed!")
     
     return True
 
@@ -582,11 +596,11 @@ def main():
     
     # Validate arguments
     if args.mode in ["new", "continue"] and not args.timesteps:
-        print("❌ Error: --timesteps is required for new and continue modes")
+        print("[ERROR] Error: --timesteps is required for new and continue modes")
         sys.exit(1)
     
     if args.mode == "continue" and not args.model:
-        print("❌ Error: --model is required for continue mode")
+        print("[ERROR] Error: --model is required for continue mode")
         sys.exit(1)
     
     # Load config if provided
