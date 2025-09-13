@@ -45,6 +45,57 @@ except ImportError as e:
     st.error(f"⚠️ Error importing trading system components: {e}")
     st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
     
+    # Create fallback function
+    def create_default_config():
+        """Fallback default config when imports fail."""
+        return {
+            'trading': {
+                'symbols': ['AAPL', 'MSFT', 'GOOGL'],
+                'timeframe': '1h',
+                'initial_balance': 10000,
+                'max_position_size': 0.1,
+                'transaction_cost': 0.001,
+                'slippage': 0.0005
+            },
+            'ppo': {
+                'learning_rate': 3e-4,
+                'n_steps': 2048,
+                'batch_size': 64,
+                'n_epochs': 10,
+                'gamma': 0.99,
+                'gae_lambda': 0.95,
+                'clip_range': 0.2,
+                'ent_coef': 0.01,
+                'vf_coef': 0.5,
+                'max_grad_norm': 0.5
+            },
+            'training': {
+                'total_timesteps': 100000,
+                'eval_freq': 10000,
+                'save_freq': 50000,
+                'log_interval': 1000,
+                'n_eval_episodes': 10
+            },
+            'network': {
+                'policy_layers': [256, 256],
+                'value_layers': [256, 256],
+                'activation': 'tanh'
+            },
+            'paths': {
+                'data_dir': 'data',
+                'model_dir': 'models',
+                'log_dir': 'logs'
+            }
+        }
+    
+    def format_currency(value):
+        """Fallback currency formatter."""
+        return f"${value:,.2f}"
+    
+    def format_percentage(value):
+        """Fallback percentage formatter."""
+        return f"{value*100:.2f}%"
+    
 except Exception as e:
     SYSTEM_READY = False
     IMPORT_ERROR = f"System error: {e}"
@@ -125,7 +176,16 @@ st.markdown("""
 
 # Initialize session state
 if 'config' not in st.session_state:
-    st.session_state.config = create_default_config()
+    try:
+        st.session_state.config = create_default_config()
+    except Exception as e:
+        logger.error(f"Failed to create default config: {e}")
+        # Minimal fallback config
+        st.session_state.config = {
+            'trading': {'symbols': ['AAPL'], 'initial_balance': 10000},
+            'ppo': {'learning_rate': 3e-4, 'n_steps': 2048},
+            'training': {'total_timesteps': 100000}
+        }
 if 'training_active' not in st.session_state:
     st.session_state.training_active = False
 if 'training_metrics' not in st.session_state:
@@ -1068,7 +1128,7 @@ def show_live_trading():
         else:
             return 'color: gray'
     
-    styled_df = quotes_df.style.applymap(color_signal, subset=['AI Signal'])
+    styled_df = quotes_df.style.map(color_signal, subset=['AI Signal'])
     st.dataframe(styled_df, width="stretch")
     
     # Trading controls
