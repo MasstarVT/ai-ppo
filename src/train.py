@@ -149,6 +149,12 @@ class TradingTrainer:
         episode_length = 0
         
         while not env.done:
+            # Check if buffer is full before storing new experience
+            if agent.buffer.ptr >= agent.n_steps:
+                # Buffer is full, update agent and reset buffer
+                training_stats = agent.update()
+                logger.info(f"Buffer full at step {episode_length}, updating agent")
+            
             # Get action from agent
             action, log_prob, value = agent.get_action(obs)
             
@@ -289,11 +295,6 @@ class TradingTrainer:
                 self.episode_returns.append(episode_stats.get('total_return', 0))
                 self.episode_sharpe_ratios.append(episode_stats.get('sharpe_ratio', 0))
                 
-                # Update agent (PPO update)
-                if timestep % self.agent.n_steps < episode_stats['episode_length']:
-                    training_stats = self.agent.update()
-                    self.training_metrics.append(training_stats)
-                
                 # Progress tracking
                 progress.update(episode_stats['episode_length'])
                 
@@ -350,22 +351,34 @@ class TradingTrainer:
             }
             
         except Exception as e:
-            logger.error(f"Error during training: {e}")
+            logger.error(f"Error during training: {e}", exc_info=True)
             raise
 
 
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description='Train PPO trading agent')
-    parser.add_argument('--config', type=str, required=True, help='Path to configuration file')
+    parser.add_argument('--config', type=str, help='Path to configuration file (default: config/config.yaml)')
     parser.add_argument('--resume', type=str, help='Path to model checkpoint to resume from')
     parser.add_argument('--eval-only', action='store_true', help='Only run evaluation')
     
     args = parser.parse_args()
     
     try:
+        # Use default config if none provided
+        config_path = args.config or 'config/config.yaml'
+        
+        # Check if config file exists
+        if not os.path.exists(config_path):
+            print(f"Error: Configuration file '{config_path}' not found.")
+            print("Please either:")
+            print("1. Create a config file at config/config.yaml")
+            print("2. Specify a config file with --config <path>")
+            print("3. Run setup_windows.bat to generate default config")
+            return 1
+        
         # Load configuration
-        config_manager = ConfigManager(args.config)
+        config_manager = ConfigManager(config_path)
         config = config_manager.to_dict()
         
         # Create trainer
@@ -418,7 +431,8 @@ def main():
             print(f"Final Win Rate: {format_percentage(results['final_metrics']['win_rate'])}")
     
     except Exception as e:
-        logger.error(f"Training failed: {e}")
+        logger.error(f"Training failed: {e}", exc_info=True)
+        print(f"Training failed with error: {e}")
         return 1
     
     return 0

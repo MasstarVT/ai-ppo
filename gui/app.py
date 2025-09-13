@@ -586,7 +586,7 @@ def show_configuration():
                     config_manager = ConfigManager("config/config.yaml")
                     st.session_state.config = config_manager.to_dict()
                     st.success("Configuration loaded from file")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.warning("No configuration file found")
             except Exception as e:
@@ -596,7 +596,7 @@ def show_configuration():
         if st.button("🔄 Reset to Defaults", width="stretch"):
             st.session_state.config = create_default_config()
             st.success("Configuration reset to defaults")
-            st.experimental_rerun()
+            st.rerun()
 
 @handle_errors
 @handle_errors
@@ -762,19 +762,19 @@ def show_training():
         if st.button("🚀 Start Training", disabled=st.session_state.training_active, width="stretch"):
             st.session_state.training_active = True
             st.success("Training started! (Simulated)")
-            st.experimental_rerun()
+            st.rerun()
     
     with col2:
         if st.button("⏸️ Pause Training", disabled=not st.session_state.training_active, width="stretch"):
             st.session_state.training_active = False
             st.info("Training paused")
-            st.experimental_rerun()
+            st.rerun()
     
     with col3:
         if st.button("🛑 Stop Training", disabled=not st.session_state.training_active, width="stretch"):
             st.session_state.training_active = False
             st.warning("Training stopped")
-            st.experimental_rerun()
+            st.rerun()
     
     # Training metrics (simulated)
     if st.session_state.training_active or st.session_state.training_metrics:

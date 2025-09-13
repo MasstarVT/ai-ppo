@@ -46,6 +46,11 @@ class Portfolio:
         if action == TradingAction.BUY and self.balance > 0:
             # Calculate maximum shares we can buy
             effective_price = price * (1 + self.slippage)  # Account for slippage
+            
+            # Protect against zero or very small prices
+            if effective_price <= 1e-8:
+                effective_price = 1e-8
+            
             max_spend = self.balance * max_position_size
             max_shares = int(max_spend / effective_price)
             
@@ -68,6 +73,11 @@ class Portfolio:
         elif action == TradingAction.SELL and self.shares > 0:
             # Sell all shares
             effective_price = price * (1 - self.slippage)  # Account for slippage
+            
+            # Protect against zero or very small prices
+            if effective_price <= 1e-8:
+                effective_price = 1e-8
+            
             proceeds = self.shares * effective_price
             transaction_fee = proceeds * self.transaction_cost
             net_proceeds = proceeds - transaction_fee
