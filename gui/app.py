@@ -173,51 +173,79 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS with enhanced styling
-st.markdown("""
-<style>
-    .main > div {
-        padding-top: 2rem;
+def get_theme_css():
+    """Get CSS styles based on current theme."""
+    # Initialize theme if not set
+    if 'theme' not in st.session_state:
+        st.session_state.theme = 'dark'
+        
+    if st.session_state.theme == 'light':
+        return get_light_theme_css()
+    else:
+        return get_dark_theme_css()
+
+def get_dark_theme_css():
+    """Get dark theme CSS styles."""
+    return """
+    <style>
+    /* Dark theme variables */
+    :root {
+        --bg-primary: #0e1117;
+        --bg-secondary: #262730;
+        --text-primary: #ffffff;
+        --text-secondary: rgba(255, 255, 255, 0.9);
+        --border-color: rgba(255, 255, 255, 0.15);
+        --accent-color: #667eea;
+        --success-color: #28a745;
+        --warning-color: #ffc107;
+        --error-color: #dc3545;
+        --shadow-color: rgba(0, 0, 0, 0.3);
     }
     
-    /* Enhanced metrics styling for better visibility */
+    /* Main container */
+    .main > div {
+        padding-top: 2rem;
+        background-color: var(--bg-primary);
+    }
+    
+    /* Enhanced metrics styling */
     div[data-testid="metric-container"] {
         background-color: rgba(255, 255, 255, 0.08) !important;
-        border: 2px solid rgba(255, 255, 255, 0.15) !important;
+        border: 2px solid var(--border-color) !important;
         padding: 1.5rem !important;
         border-radius: 12px !important;
         margin: 0.5rem 0 !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        box-shadow: 0 4px 12px var(--shadow-color) !important;
         backdrop-filter: blur(10px) !important;
         transition: all 0.3s ease !important;
     }
     
     div[data-testid="metric-container"]:hover {
         transform: translateY(-3px) !important;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4) !important;
         border-color: rgba(255, 255, 255, 0.3) !important;
     }
     
-    /* Metric labels with better contrast */
+    /* Metric labels */
     div[data-testid="metric-container"] label {
         font-size: 1rem !important;
         font-weight: 600 !important;
-        color: rgba(255, 255, 255, 0.9) !important;
+        color: var(--text-secondary) !important;
         margin-bottom: 0.5rem !important;
         text-transform: uppercase !important;
         letter-spacing: 0.5px !important;
     }
     
-    /* Metric values with high contrast */
+    /* Metric values */
     div[data-testid="metric-container"] div[data-testid="metric-value"] {
         font-size: 2rem !important;
         font-weight: 700 !important;
-        color: #ffffff !important;
+        color: var(--text-primary) !important;
         line-height: 1.2 !important;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+        text-shadow: 0 2px 4px var(--shadow-color) !important;
     }
     
-    /* Metric deltas with better visibility */
+    /* Metric deltas */
     div[data-testid="metric-container"] div[data-testid="metric-delta"] {
         font-size: 1.1rem !important;
         font-weight: 600 !important;
@@ -231,14 +259,14 @@ st.markdown("""
         border-radius: 15px;
         padding: 2rem;
         margin: 1.5rem 0;
-        border: 2px solid rgba(255,255,255,0.15);
+        border: 2px solid var(--border-color);
         box-shadow: 0 8px 32px rgba(0,0,0,0.1);
     }
     
-    /* Enhanced status boxes */
+    /* Status boxes */
     .success-box {
         background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-        border: 2px solid #28a745;
+        border: 2px solid var(--success-color);
         color: #155724;
         padding: 1.2rem;
         border-radius: 12px;
@@ -249,7 +277,7 @@ st.markdown("""
     
     .warning-box {
         background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-        border: 2px solid #ffc107;
+        border: 2px solid var(--warning-color);
         color: #856404;
         padding: 1.2rem;
         border-radius: 12px;
@@ -260,7 +288,7 @@ st.markdown("""
     
     .error-box {
         background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-        border: 2px solid #dc3545;
+        border: 2px solid var(--error-color);
         color: #721c24;
         padding: 1.2rem;
         border-radius: 12px;
@@ -269,35 +297,38 @@ st.markdown("""
         font-weight: 500;
     }
     
-    /* Improved dataframe styling */
-    .dataframe {
-        background-color: rgba(255, 255, 255, 0.08) !important;
-        border-radius: 12px !important;
-        border: 2px solid rgba(255, 255, 255, 0.15) !important;
-        overflow: hidden !important;
+    .info-box {
+        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+        border: 2px solid #17a2b8;
+        color: #0c5460;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(23, 162, 184, 0.2);
+        font-weight: 500;
     }
     
-    /* Better button styling */
+    /* Button styling */
     .stButton > button {
         border-radius: 25px !important;
         border: none !important;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        background: linear-gradient(135deg, var(--accent-color) 0%, #764ba2 100%) !important;
         color: white !important;
         font-weight: 600 !important;
         padding: 0.7rem 2rem !important;
         transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
+        box-shadow: 0 4px 15px var(--shadow-color) !important;
     }
     
     .stButton > button:hover {
         transform: translateY(-2px) !important;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
-        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.4) !important;
+        background: linear-gradient(135deg, #764ba2 0%, var(--accent-color) 100%) !important;
     }
     
     /* Sidebar improvements */
     .css-1d391kg {
-        background-color: rgba(0,0,0,0.2) !important;
+        background-color: var(--bg-secondary) !important;
     }
     
     /* Chart container improvements */
@@ -305,10 +336,194 @@ st.markdown("""
         border-radius: 12px !important;
         overflow: hidden !important;
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15) !important;
-        border: 2px solid rgba(255, 255, 255, 0.1) !important;
+        border: 2px solid var(--border-color) !important;
     }
-</style>
-""", unsafe_allow_html=True)
+    
+    /* Theme toggle button */
+    .theme-toggle {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 999;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 50px;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 4px 12px var(--shadow-color);
+    }
+    </style>
+    """
+
+def get_light_theme_css():
+    """Get light theme CSS styles."""
+    return """
+    <style>
+    /* Light theme variables */
+    :root {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8f9fa;
+        --text-primary: #212529;
+        --text-secondary: #495057;
+        --border-color: rgba(0, 0, 0, 0.1);
+        --accent-color: #007bff;
+        --success-color: #28a745;
+        --warning-color: #ffc107;
+        --error-color: #dc3545;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Main container */
+    .main > div {
+        padding-top: 2rem;
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+    }
+    
+    /* Enhanced metrics styling */
+    div[data-testid="metric-container"] {
+        background-color: var(--bg-secondary) !important;
+        border: 2px solid var(--border-color) !important;
+        padding: 1.5rem !important;
+        border-radius: 12px !important;
+        margin: 0.5rem 0 !important;
+        box-shadow: 0 4px 12px var(--shadow-color) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+        border-color: var(--accent-color) !important;
+    }
+    
+    /* Metric labels */
+    div[data-testid="metric-container"] label {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: var(--text-secondary) !important;
+        margin-bottom: 0.5rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+    }
+    
+    /* Metric values */
+    div[data-testid="metric-container"] div[data-testid="metric-value"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        color: var(--text-primary) !important;
+        line-height: 1.2 !important;
+    }
+    
+    /* Metric deltas */
+    div[data-testid="metric-container"] div[data-testid="metric-delta"] {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        margin-top: 0.4rem !important;
+    }
+    
+    /* Portfolio Overview container */
+    .portfolio-overview {
+        background: var(--bg-secondary);
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        border: 2px solid var(--border-color);
+        box-shadow: 0 8px 32px var(--shadow-color);
+    }
+    
+    /* Status boxes - light theme versions */
+    .success-box {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        border: 2px solid var(--success-color);
+        color: #155724;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+        font-weight: 500;
+    }
+    
+    .warning-box {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+        border: 2px solid var(--warning-color);
+        color: #856404;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.15);
+        font-weight: 500;
+    }
+    
+    .error-box {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        border: 2px solid var(--error-color);
+        color: #721c24;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.15);
+        font-weight: 500;
+    }
+    
+    .info-box {
+        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+        border: 2px solid #17a2b8;
+        color: #0c5460;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(23, 162, 184, 0.15);
+        font-weight: 500;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: 25px !important;
+        border: none !important;
+        background: linear-gradient(135deg, var(--accent-color) 0%, #6c5ce7 100%) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 0.7rem 2rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px var(--shadow-color) !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2) !important;
+        background: linear-gradient(135deg, #6c5ce7 0%, var(--accent-color) 100%) !important;
+    }
+    
+    /* Sidebar improvements */
+    .css-1d391kg {
+        background-color: var(--bg-secondary) !important;
+    }
+    
+    /* Chart container improvements */
+    .js-plotly-plot {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+        box-shadow: 0 6px 20px var(--shadow-color) !important;
+        border: 2px solid var(--border-color) !important;
+    }
+    
+    /* Theme toggle button */
+    .theme-toggle {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 999;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 50px;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 4px 12px var(--shadow-color);
+    }
+    </style>
+    """
+
+# Custom CSS with theme support
+st.markdown(get_theme_css(), unsafe_allow_html=True)
 
 # Initialize session state
 if 'config' not in st.session_state:
@@ -322,10 +537,361 @@ if 'config' not in st.session_state:
             'ppo': {'learning_rate': 3e-4, 'n_steps': 2048},
             'training': {'total_timesteps': 100000}
         }
+
+# Initialize theme state
+if 'theme' not in st.session_state:
+    st.session_state.theme = 'dark'  # Default to dark theme
+
+# Initialize other session state variables
 if 'training_active' not in st.session_state:
     st.session_state.training_active = False
 if 'training_metrics' not in st.session_state:
     st.session_state.training_metrics = []
+
+def get_theme_css():
+    """Get CSS styles based on current theme."""
+    if st.session_state.theme == 'light':
+        return get_light_theme_css()
+    else:
+        return get_dark_theme_css()
+
+def get_dark_theme_css():
+    """Get dark theme CSS styles."""
+    return """
+    <style>
+    /* Dark theme variables */
+    :root {
+        --bg-primary: #0e1117;
+        --bg-secondary: #262730;
+        --text-primary: #ffffff;
+        --text-secondary: rgba(255, 255, 255, 0.9);
+        --border-color: rgba(255, 255, 255, 0.15);
+        --accent-color: #667eea;
+        --success-color: #28a745;
+        --warning-color: #ffc107;
+        --error-color: #dc3545;
+        --shadow-color: rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Main container */
+    .main > div {
+        padding-top: 2rem;
+        background-color: var(--bg-primary);
+    }
+    
+    /* Enhanced metrics styling */
+    div[data-testid="metric-container"] {
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        border: 2px solid var(--border-color) !important;
+        padding: 1.5rem !important;
+        border-radius: 12px !important;
+        margin: 0.5rem 0 !important;
+        box-shadow: 0 4px 12px var(--shadow-color) !important;
+        backdrop-filter: blur(10px) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4) !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
+    }
+    
+    /* Metric labels */
+    div[data-testid="metric-container"] label {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: var(--text-secondary) !important;
+        margin-bottom: 0.5rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+    }
+    
+    /* Metric values */
+    div[data-testid="metric-container"] div[data-testid="metric-value"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        color: var(--text-primary) !important;
+        line-height: 1.2 !important;
+        text-shadow: 0 2px 4px var(--shadow-color) !important;
+    }
+    
+    /* Metric deltas */
+    div[data-testid="metric-container"] div[data-testid="metric-delta"] {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        margin-top: 0.4rem !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+    }
+    
+    /* Portfolio Overview container */
+    .portfolio-overview {
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        border: 2px solid var(--border-color);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    /* Status boxes */
+    .success-box {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        border: 2px solid var(--success-color);
+        color: #155724;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
+        font-weight: 500;
+    }
+    
+    .warning-box {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+        border: 2px solid var(--warning-color);
+        color: #856404;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.2);
+        font-weight: 500;
+    }
+    
+    .error-box {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        border: 2px solid var(--error-color);
+        color: #721c24;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);
+        font-weight: 500;
+    }
+    
+    .info-box {
+        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+        border: 2px solid #17a2b8;
+        color: #0c5460;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(23, 162, 184, 0.2);
+        font-weight: 500;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: 25px !important;
+        border: none !important;
+        background: linear-gradient(135deg, var(--accent-color) 0%, #764ba2 100%) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 0.7rem 2rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px var(--shadow-color) !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.4) !important;
+        background: linear-gradient(135deg, #764ba2 0%, var(--accent-color) 100%) !important;
+    }
+    
+    /* Sidebar improvements */
+    .css-1d391kg {
+        background-color: var(--bg-secondary) !important;
+    }
+    
+    /* Chart container improvements */
+    .js-plotly-plot {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15) !important;
+        border: 2px solid var(--border-color) !important;
+    }
+    
+    /* Theme toggle button */
+    .theme-toggle {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 999;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 50px;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 4px 12px var(--shadow-color);
+    }
+    </style>
+    """
+
+def get_light_theme_css():
+    """Get light theme CSS styles."""
+    return """
+    <style>
+    /* Light theme variables */
+    :root {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8f9fa;
+        --text-primary: #212529;
+        --text-secondary: #495057;
+        --border-color: rgba(0, 0, 0, 0.1);
+        --accent-color: #007bff;
+        --success-color: #28a745;
+        --warning-color: #ffc107;
+        --error-color: #dc3545;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Main container */
+    .main > div {
+        padding-top: 2rem;
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+    }
+    
+    /* Enhanced metrics styling */
+    div[data-testid="metric-container"] {
+        background-color: var(--bg-secondary) !important;
+        border: 2px solid var(--border-color) !important;
+        padding: 1.5rem !important;
+        border-radius: 12px !important;
+        margin: 0.5rem 0 !important;
+        box-shadow: 0 4px 12px var(--shadow-color) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+        border-color: var(--accent-color) !important;
+    }
+    
+    /* Metric labels */
+    div[data-testid="metric-container"] label {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: var(--text-secondary) !important;
+        margin-bottom: 0.5rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+    }
+    
+    /* Metric values */
+    div[data-testid="metric-container"] div[data-testid="metric-value"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        color: var(--text-primary) !important;
+        line-height: 1.2 !important;
+    }
+    
+    /* Metric deltas */
+    div[data-testid="metric-container"] div[data-testid="metric-delta"] {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        margin-top: 0.4rem !important;
+    }
+    
+    /* Portfolio Overview container */
+    .portfolio-overview {
+        background: var(--bg-secondary);
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        border: 2px solid var(--border-color);
+        box-shadow: 0 8px 32px var(--shadow-color);
+    }
+    
+    /* Status boxes - light theme versions */
+    .success-box {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        border: 2px solid var(--success-color);
+        color: #155724;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+        font-weight: 500;
+    }
+    
+    .warning-box {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+        border: 2px solid var(--warning-color);
+        color: #856404;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.15);
+        font-weight: 500;
+    }
+    
+    .error-box {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        border: 2px solid var(--error-color);
+        color: #721c24;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.15);
+        font-weight: 500;
+    }
+    
+    .info-box {
+        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+        border: 2px solid #17a2b8;
+        color: #0c5460;
+        padding: 1.2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(23, 162, 184, 0.15);
+        font-weight: 500;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: 25px !important;
+        border: none !important;
+        background: linear-gradient(135deg, var(--accent-color) 0%, #6c5ce7 100%) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 0.7rem 2rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px var(--shadow-color) !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2) !important;
+        background: linear-gradient(135deg, #6c5ce7 0%, var(--accent-color) 100%) !important;
+    }
+    
+    /* Sidebar improvements */
+    .css-1d391kg {
+        background-color: var(--bg-secondary) !important;
+    }
+    
+    /* Chart container improvements */
+    .js-plotly-plot {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+        box-shadow: 0 6px 20px var(--shadow-color) !important;
+        border: 2px solid var(--border-color) !important;
+    }
+    
+    /* Theme toggle button */
+    .theme-toggle {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 999;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 50px;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 4px 12px var(--shadow-color);
+    }
+    </style>
+    """
 
 def main():
     """Main application function."""
@@ -337,6 +903,18 @@ def main():
     # Sidebar navigation
     with st.sidebar:
         st.image("https://via.placeholder.com/200x80/1f77b4/ffffff?text=AI+PPO+Trading", width=200)
+        
+        # Theme toggle button
+        st.divider()
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.write("**Theme:**")
+        with col2:
+            if st.button(f"{'🌞' if st.session_state.theme == 'dark' else '🌙'}"):
+                st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
+                st.rerun()
+        
+        st.divider()
         
         selected = option_menu(
             menu_title="Navigation",
@@ -1544,6 +2122,10 @@ def show_backtesting():
             dates = pd.date_range(start=start_date, end=end_date, freq='D')
             np.random.seed(42)
             
+            # Generate realistic stock price data
+            price_changes = np.random.normal(0.001, 0.02, len(dates))
+            prices = 100 * (1 + price_changes).cumprod()
+            
             # Simulate portfolio performance
             daily_returns = np.random.normal(0.001, 0.015, len(dates))
             portfolio_values = initial_balance * (1 + daily_returns).cumprod()
@@ -1551,6 +2133,61 @@ def show_backtesting():
             # Buy and hold benchmark
             stock_returns = np.random.normal(0.0008, 0.018, len(dates))
             benchmark_values = initial_balance * (1 + stock_returns).cumprod()
+            
+            # Generate trading signals (buy/sell actions)
+            # Simulate agent decisions based on price movements and technical indicators
+            actions = []
+            positions = []
+            current_position = 0
+            buy_signals = []
+            sell_signals = []
+            
+            for i in range(len(dates)):
+                if i < 20:  # Need some history for indicators
+                    actions.append(0)  # Hold
+                    positions.append(current_position)
+                    continue
+                
+                # Simple trading logic for demonstration
+                # Calculate moving averages
+                short_ma = np.mean(prices[max(0, i-5):i+1])
+                long_ma = np.mean(prices[max(0, i-20):i+1])
+                price_momentum = (prices[i] - prices[i-1]) / prices[i-1] if i > 0 else 0
+                
+                # Trading decision logic
+                if current_position == 0:  # No position
+                    # Buy signal: short MA > long MA and positive momentum
+                    if short_ma > long_ma and price_momentum > 0.01 and np.random.random() > 0.7:
+                        action = 1  # Buy
+                        current_position = 1
+                        buy_signals.append({
+                            'date': dates[i],
+                            'price': prices[i],
+                            'action': 'BUY'
+                        })
+                    else:
+                        action = 0  # Hold
+                elif current_position == 1:  # Long position
+                    # Sell signal: short MA < long MA or negative momentum
+                    if short_ma < long_ma or price_momentum < -0.015 or np.random.random() > 0.8:
+                        action = 2  # Sell
+                        current_position = 0
+                        sell_signals.append({
+                            'date': dates[i],
+                            'price': prices[i],
+                            'action': 'SELL'
+                        })
+                    else:
+                        action = 0  # Hold
+                else:
+                    action = 0  # Hold
+                
+                actions.append(action)
+                positions.append(current_position)
+            
+            # Convert signals to DataFrames for easier handling
+            buy_df = pd.DataFrame(buy_signals) if buy_signals else pd.DataFrame(columns=['date', 'price', 'action'])
+            sell_df = pd.DataFrame(sell_signals) if sell_signals else pd.DataFrame(columns=['date', 'price', 'action'])
             
             # Display results
             st.subheader("Backtest Results")
@@ -1583,10 +2220,98 @@ def show_backtesting():
                 max_drawdown = drawdown.min() * 100
                 st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
             
-            # Performance chart
+            # Trading Statistics
+            st.subheader("Trading Activity")
+            
+            trade_col1, trade_col2, trade_col3, trade_col4 = st.columns(4)
+            
+            with trade_col1:
+                st.metric("Total Trades", len(buy_signals) + len(sell_signals))
+            
+            with trade_col2:
+                st.metric("Buy Orders", len(buy_signals))
+            
+            with trade_col3:
+                st.metric("Sell Orders", len(sell_signals))
+            
+            with trade_col4:
+                win_rate = 65 + np.random.normal(0, 10)  # Simulated win rate
+                st.metric("Win Rate", f"{max(0, min(100, win_rate)):.1f}%")
+            
+            # Performance chart with buy/sell markers
+            st.subheader("📈 Price Chart with Trading Signals")
+            
             fig = go.Figure()
             
+            # Add price line
             fig.add_trace(go.Scatter(
+                x=dates,
+                y=prices,
+                mode='lines',
+                name=f'{selected_symbol} Price',
+                line=dict(color='#1f77b4', width=2),
+                hovertemplate='<b>%{fullData.name}</b><br>' +
+                             'Date: %{x}<br>' +
+                             'Price: $%{y:.2f}<br>' +
+                             '<extra></extra>'
+            ))
+            
+            # Add buy signals (green triangles pointing up)
+            if not buy_df.empty:
+                fig.add_trace(go.Scatter(
+                    x=buy_df['date'],
+                    y=buy_df['price'],
+                    mode='markers',
+                    name='Buy Signals',
+                    marker=dict(
+                        symbol='triangle-up',
+                        size=12,
+                        color='#00ff00',
+                        line=dict(color='#008000', width=2)
+                    ),
+                    hovertemplate='<b>BUY SIGNAL</b><br>' +
+                                 'Date: %{x}<br>' +
+                                 'Price: $%{y:.2f}<br>' +
+                                 '<extra></extra>'
+                ))
+            
+            # Add sell signals (red triangles pointing down)
+            if not sell_df.empty:
+                fig.add_trace(go.Scatter(
+                    x=sell_df['date'],
+                    y=sell_df['price'],
+                    mode='markers',
+                    name='Sell Signals',
+                    marker=dict(
+                        symbol='triangle-down',
+                        size=12,
+                        color='#ff0000',
+                        line=dict(color='#800000', width=2)
+                    ),
+                    hovertemplate='<b>SELL SIGNAL</b><br>' +
+                                 'Date: %{x}<br>' +
+                                 'Price: $%{y:.2f}<br>' +
+                                 '<extra></extra>'
+                ))
+            
+            fig.update_layout(
+                title=f"{selected_symbol} Price with AI Trading Signals",
+                xaxis_title="Date",
+                yaxis_title="Price ($)",
+                height=600,
+                legend=dict(x=0, y=1),
+                hovermode='closest',
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig, width="stretch")
+            
+            # Portfolio Performance Comparison
+            st.subheader("📊 Portfolio Performance")
+            
+            fig2 = go.Figure()
+            
+            fig2.add_trace(go.Scatter(
                 x=dates,
                 y=portfolio_values,
                 mode='lines',
@@ -1595,7 +2320,7 @@ def show_backtesting():
             ))
             
             if benchmark_comparison:
-                fig.add_trace(go.Scatter(
+                fig2.add_trace(go.Scatter(
                     x=dates,
                     y=benchmark_values,
                     mode='lines',
@@ -1603,15 +2328,46 @@ def show_backtesting():
                     line=dict(color='gray', width=2, dash='dash')
                 ))
             
-            fig.update_layout(
-                title="Backtest Performance Comparison",
+            fig2.update_layout(
+                title="Portfolio Performance Comparison",
                 xaxis_title="Date",
                 yaxis_title="Portfolio Value ($)",
-                height=500,
+                height=400,
                 legend=dict(x=0, y=1)
             )
             
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig2, width="stretch")
+            
+            # Trade Details Table
+            if not buy_df.empty or not sell_df.empty:
+                st.subheader("📋 Trade Details")
+                
+                # Combine buy and sell signals
+                all_trades = []
+                for _, trade in buy_df.iterrows():
+                    all_trades.append({
+                        'Date': trade['date'].strftime('%Y-%m-%d'),
+                        'Action': '🟢 BUY',
+                        'Price': f"${trade['price']:.2f}",
+                        'Type': 'Market Order'
+                    })
+                
+                for _, trade in sell_df.iterrows():
+                    all_trades.append({
+                        'Date': trade['date'].strftime('%Y-%m-%d'),
+                        'Action': '🔴 SELL',
+                        'Price': f"${trade['price']:.2f}",
+                        'Type': 'Market Order'
+                    })
+                
+                # Sort by date
+                all_trades.sort(key=lambda x: x['Date'])
+                
+                if all_trades:
+                    trades_df = pd.DataFrame(all_trades)
+                    st.dataframe(trades_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No trades executed during this backtest period.")
             
             # Detailed results table
             st.subheader("Detailed Results")
