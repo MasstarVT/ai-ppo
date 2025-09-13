@@ -14,20 +14,9 @@ from abc import ABC, abstractmethod
 from functools import wraps
 import random
 
-# Set up debug logging for data operations
+# Set up optimized logging for data operations
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Add console handler if not already present
-if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-print("🐛 DEBUG: Data client module initialized")
-logger.debug("Data client module loaded with debug logging")
+logger.setLevel(logging.INFO)  # Changed from DEBUG to INFO for performance
 
 
 def rate_limit(max_calls_per_minute: int = 60):
@@ -123,28 +112,16 @@ class YFinanceProvider(DataProvider):
         Returns:
             DataFrame with OHLCV data
         """
-        print(f"📊 Fetching historical data: {symbol} ({period}, {interval})")
-        logger.debug(f"=== HISTORICAL DATA REQUEST ===")
-        logger.debug(f"Symbol: {symbol}, Period: {period}, Interval: {interval}")
-        
         try:
-            logger.debug(f"Creating yfinance ticker for {symbol}")
             ticker = yf.Ticker(symbol)
-            
-            logger.debug(f"Requesting history data...")
             data = ticker.history(period=period, interval=interval)
             
             if data.empty:
-                print(f"⚠️ No data found for symbol {symbol}")
                 logger.warning(f"No data found for symbol {symbol}")
                 return pd.DataFrame()
             
-            print(f"✅ Retrieved {len(data)} data points for {symbol}")
-            logger.debug(f"Retrieved {len(data)} data points for {symbol}")
-            
             # Handle different possible column names from yfinance
             original_columns = list(data.columns)
-            logger.debug(f"Original columns for {symbol}: {original_columns}")
             
             # Standard expected columns
             standard_columns = ['Open', 'High', 'Low', 'Close', 'Volume']

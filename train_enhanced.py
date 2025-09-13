@@ -13,58 +13,39 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-# Set up comprehensive debug logging
+# Set up optimized logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,  # Changed from DEBUG to INFO for performance
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('logs/training_debug.log', mode='a')
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
 
-print("🐛 DEBUG MODE ENABLED - Enhanced Training Script")
-logger.debug("=== TRAINING SCRIPT STARTUP ===")
+print("� Enhanced Training Script Starting...")
 
 # Fix encoding issues on Windows
 if sys.platform == "win32":
     import codecs
     sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
     sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
-    logger.debug("Windows encoding configured")
 
 # Add src to path
 current_dir = Path(__file__).parent
 src_path = current_dir / "src"
 sys.path.insert(0, str(src_path))
 
-logger.debug(f"Current directory: {current_dir}")
-logger.debug(f"Source path: {src_path}")
-logger.debug(f"Python path: {sys.path[:3]}...")  # Show first 3 paths
-
-print("🔄 Importing trading system modules...")
-logger.debug("Starting module imports")
+print("🔄 Loading modules...")
 
 try:
-    logger.debug("Importing PPOAgent...")
     from agents.ppo_agent import PPOAgent
-    
-    logger.debug("Importing TradingEnvironment...")
     from environments.trading_env import TradingEnvironment
-    
-    logger.debug("Importing DataClient...")
     from data.data_client import DataClient
-    
-    logger.debug("Importing utilities...")
     from utils.config import ConfigManager, create_default_config
-    
-    print("✅ All modules imported successfully")
-    logger.debug("All modules imported successfully")
+    print("✅ All modules loaded")
 except ImportError as e:
     print(f"❌ Import error: {e}")
-    logger.error(f"Import error: {e}")
-    print("💡 Make sure all dependencies are installed: pip install -r requirements.txt")
     sys.exit(1)
 
 def continue_training(model_path, additional_timesteps, config=None, save_path=None):

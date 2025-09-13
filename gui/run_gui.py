@@ -11,13 +11,13 @@ import subprocess
 import time
 import socket
 
-# Import and setup debug logging
+# Setup optimized logging (only enable debug if needed)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from debug_config import setup_debug_logging
 
-print("🐛 Setting up debug logging...")
-setup_debug_logging()
-print("✅ Debug logging initialized")
+# Enable debug logging only if environment variable is set
+debug_mode = os.getenv('AI_PPO_DEBUG', 'false').lower() == 'true'
+setup_debug_logging(enable_debug=debug_mode)
 
 def is_port_in_use(port):
     """Check if a port is already in use."""
