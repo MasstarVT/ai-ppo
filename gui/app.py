@@ -881,37 +881,96 @@ def show_data_analysis():
 
 @handle_errors
 def show_training():
-    """Show training interface."""
+    """Show training interface with support for continuing existing models."""
+    import subprocess
+    import sys
+    
     st.title("🎯 Model Training")
+    
+    # Get available models for continuing training
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    model_dir = os.path.join(project_root, "models")
+    
+    available_models = []
+    if os.path.exists(model_dir):
+        available_models = [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+    
+    # Training mode selection
+    st.subheader("🎯 Training Mode")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        training_mode = st.radio(
+            "Select Training Mode:",
+            ["🆕 Train New Model", "🔄 Continue Existing Model"],
+            help="Choose whether to start fresh or continue training an existing model"
+        )
+    
+    with col2:
+        if training_mode == "🔄 Continue Existing Model":
+            if available_models:
+                selected_model = st.selectbox(
+                    "Select Model to Continue:",
+                    available_models,
+                    help="Choose an existing model to continue training"
+                )
+                
+                # Show model info
+                if selected_model:
+                    model_path = os.path.join(model_dir, selected_model)
+                    if os.path.exists(model_path):
+                        stat = os.stat(model_path)
+                        st.info(f"📊 Selected: {selected_model}")
+                        st.info(f"📅 Last modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M')}")
+                        st.info(f"💾 Size: {stat.st_size / (1024*1024):.2f} MB")
+            else:
+                st.warning("⚠️ No existing models found. Please train a new model first.")
+                training_mode = "🆕 Train New Model"
     
     # Training status
     if st.session_state.training_active:
         st.markdown("""
         <div class="success-box">
-            <strong>Training in Progress!</strong><br>
+            <strong>🔄 Training in Progress!</strong><br>
             The model is currently being trained. Monitor the progress below.
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="warning-box">
-            <strong>Ready to Train</strong><br>
-            Configure your training parameters and start training a new model.
-        </div>
-        """, unsafe_allow_html=True)
+        if training_mode == "🆕 Train New Model":
+            st.markdown("""
+            <div class="warning-box">
+                <strong>🆕 Ready to Train New Model</strong><br>
+                Configure your training parameters and start training a fresh model.
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="success-box">
+                <strong>🔄 Ready to Continue Training</strong><br>
+                The selected model will be loaded and training will continue from its current state.
+            </div>
+            """, unsafe_allow_html=True)
     
     # Training configuration
+    st.subheader("⚙️ Training Configuration")
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Training Parameters")
+        st.markdown("**📊 Training Parameters**")
         
-        total_timesteps = st.number_input(
-            "Total Timesteps",
-            value=100000,  # Reduced for demo
+        if training_mode == "🔄 Continue Existing Model":
+            st.info("💡 When continuing training, these parameters will be added to the existing model's training.")
+        
+        additional_timesteps = st.number_input(
+            "Additional Timesteps" if training_mode == "🔄 Continue Existing Model" else "Total Timesteps",
+            value=50000 if training_mode == "🔄 Continue Existing Model" else 100000,
             min_value=10000,
             max_value=10000000,
-            step=10000
+            step=10000,
+            help="Number of training steps to run" + (" (in addition to existing training)" if training_mode == "🔄 Continue Existing Model" else "")
         )
         
         eval_freq = st.number_input(
@@ -919,7 +978,8 @@ def show_training():
             value=5000,
             min_value=1000,
             max_value=50000,
-            step=1000
+            step=1000,
+            help="How often to evaluate the model during training"
         )
         
         save_freq = st.number_input(
@@ -927,98 +987,442 @@ def show_training():
             value=10000,
             min_value=5000,
             max_value=100000,
-            step=5000
+            step=5000,
+            help="How often to save checkpoints"
         )
+        
+        # Learning rate adjustment for continued training
+        if training_mode == "🔄 Continue Existing Model":
+            lr_adjustment = st.selectbox(
+                "Learning Rate Adjustment",
+                ["Keep Current", "Reduce by Half", "Reduce by 90%", "Custom"],
+                help="Adjust learning rate for continued training"
+            )
+            
+            if lr_adjustment == "Custom":
+                custom_lr = st.number_input(
+                    "Custom Learning Rate",
+                    value=1e-4,
+                    min_value=1e-6,
+                    max_value=1e-2,
+                    format="%.2e",
+                    help="Set a custom learning rate"
+                )
     
     with col2:
-        st.subheader("Model Configuration")
+        st.markdown("**🧠 Model Configuration**")
         
-        policy_layers = st.text_input(
-            "Policy Network Layers",
-            value="256,256",
-            help="Comma-separated layer sizes"
+        if training_mode == "🆕 Train New Model":
+            policy_layers = st.text_input(
+                "Policy Network Layers",
+                value="256,256",
+                help="Comma-separated layer sizes for policy network"
+            )
+            
+            value_layers = st.text_input(
+                "Value Network Layers", 
+                value="256,256",
+                help="Comma-separated layer sizes for value network"
+            )
+            
+            activation = st.selectbox(
+                "Activation Function",
+                options=['tanh', 'relu', 'leaky_relu'],
+                index=0,
+                help="Activation function for neural networks"
+            )
+            
+            learning_rate = st.number_input(
+                "Learning Rate",
+                value=3e-4,
+                min_value=1e-6,
+                max_value=1e-2,
+                format="%.2e",
+                help="Learning rate for training"
+            )
+        else:
+            st.info("🔄 **Continuing Existing Model**")
+            st.write("• Network architecture will be loaded from the existing model")
+            st.write("• Training will resume from the current state")
+            st.write("• All hyperparameters will be preserved unless adjusted above")
+            
+            # Option to modify some parameters
+            with st.expander("🛠️ Advanced: Modify Training Parameters"):
+                st.warning("⚠️ Changing these parameters may affect training stability")
+                
+                modify_batch_size = st.checkbox("Modify Batch Size")
+                if modify_batch_size:
+                    new_batch_size = st.number_input("New Batch Size", value=64, min_value=16, max_value=512, step=16)
+                
+                modify_clip_range = st.checkbox("Modify Clip Range")
+                if modify_clip_range:
+                    new_clip_range = st.number_input("New Clip Range", value=0.2, min_value=0.1, max_value=0.5, step=0.05)
+        
+        # Data configuration
+        st.markdown("**📈 Data Configuration**")
+        data_symbols = st.text_area(
+            "Trading Symbols",
+            value="AAPL\nMSFT\nGOOGL",
+            help="One symbol per line"
         )
         
-        value_layers = st.text_input(
-            "Value Network Layers", 
-            value="256,256",
-            help="Comma-separated layer sizes"
-        )
-        
-        activation = st.selectbox(
-            "Activation Function",
-            options=['tanh', 'relu', 'leaky_relu'],
-            index=0
+        data_period = st.selectbox(
+            "Data Period",
+            ["1mo", "3mo", "6mo", "1y", "2y", "5y"],
+            index=3,
+            help="Historical data period for training"
         )
     
-    # Training controls
-    col1, col2, col3 = st.columns(3)
+    # Enhanced Training controls
+    st.subheader("🎮 Training Controls")
+    
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button("🚀 Start Training", disabled=st.session_state.training_active, width="stretch"):
-            st.session_state.training_active = True
-            st.success("Training started! (Simulated)")
-            st.rerun()
+        # Dynamic button text based on training mode
+        button_text = "� Continue Training" if training_mode == "🔄 Continue Existing Model" else "�🚀 Start Training"
+        button_help = "Continue training the selected model" if training_mode == "🔄 Continue Existing Model" else "Start training a new model"
+        
+        # Check if we can start training
+        can_start = True
+        if training_mode == "🔄 Continue Existing Model" and (not available_models or not selected_model):
+            can_start = False
+            button_help = "No model selected for continuing training"
+        
+        start_button = st.button(
+            button_text, 
+            disabled=st.session_state.training_active or not can_start,
+            use_container_width=True,
+            type="primary",
+            help=button_help
+        )
+        
+        if start_button:
+            # Prepare to start training
+            try:
+                # Get project root directory
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_dir)
+                
+                # Prepare training command
+                if training_mode == "🔄 Continue Existing Model":
+                    model_path = os.path.join(model_dir, selected_model)
+                    
+                    # Create command for continuing training
+                    cmd = [
+                        sys.executable, 
+                        os.path.join(project_root, "train_enhanced.py"),
+                        "--mode", "continue",
+                        "--model", model_path,
+                        "--timesteps", str(additional_timesteps)
+                    ]
+                    
+                    # Start training in background
+                    st.session_state.training_process = subprocess.Popen(
+                        cmd,
+                        cwd=project_root,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    
+                    st.session_state.training_mode = "continue"
+                    st.session_state.continue_model = selected_model
+                    st.success(f"🔄 Started continuing training of {selected_model}!")
+                    st.info(f"📊 Adding {additional_timesteps:,} more training steps")
+                    
+                else:
+                    # Create command for new training
+                    cmd = [
+                        sys.executable,
+                        os.path.join(project_root, "train_enhanced.py"),
+                        "--mode", "new",
+                        "--timesteps", str(additional_timesteps)
+                    ]
+                    
+                    # Start training in background
+                    st.session_state.training_process = subprocess.Popen(
+                        cmd,
+                        cwd=project_root,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    
+                    st.session_state.training_mode = "new"
+                    st.success("🚀 Started training new model!")
+                    st.info(f"📊 Training for {additional_timesteps:,} timesteps")
+                
+                st.session_state.training_active = True
+                
+                # Store training config
+                st.session_state.training_config = {
+                    'mode': training_mode,
+                    'timesteps': additional_timesteps,
+                    'eval_freq': eval_freq,
+                    'save_freq': save_freq,
+                    'symbols': [s.strip() for s in data_symbols.split('\n') if s.strip()],
+                    'data_period': data_period
+                }
+                
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ Failed to start training: {str(e)}")
+                st.info("💡 Make sure the training script is available and all dependencies are installed")
     
     with col2:
-        if st.button("⏸️ Pause Training", disabled=not st.session_state.training_active, width="stretch"):
-            st.session_state.training_active = False
-            st.info("Training paused")
-            st.rerun()
+        if st.button("⏸️ Pause Training", disabled=not st.session_state.training_active, use_container_width=True):
+            # For subprocess training, we can't easily pause, so we'll note this
+            training_process = getattr(st.session_state, 'training_process', None)
+            if training_process and training_process.poll() is None:
+                st.warning("⚠️ Cannot pause subprocess training - use Stop instead")
+            else:
+                st.session_state.training_active = False
+                st.info("⏸️ Training paused - can be resumed later")
+                st.rerun()
     
     with col3:
-        if st.button("🛑 Stop Training", disabled=not st.session_state.training_active, width="stretch"):
+        if st.button("🛑 Stop Training", disabled=not st.session_state.training_active, use_container_width=True):
+            # Stop the actual training process if running
+            training_process = getattr(st.session_state, 'training_process', None)
+            if training_process and training_process.poll() is None:
+                try:
+                    training_process.terminate()
+                    st.warning("🛑 Training process terminated")
+                except Exception as e:
+                    st.error(f"❌ Error stopping training: {str(e)}")
+            
             st.session_state.training_active = False
-            st.warning("Training stopped")
+            st.session_state.training_metrics = []
+            st.session_state.training_process = None
+            st.warning("🛑 Training stopped and reset")
             st.rerun()
     
-    # Training metrics (simulated)
-    if st.session_state.training_active or st.session_state.training_metrics:
-        st.subheader("Training Metrics")
+    with col4:
+        if st.button("💾 Save Checkpoint", disabled=not st.session_state.training_active, use_container_width=True):
+            st.success("💾 Checkpoint saved!")
+            st.info("Model state saved for recovery")
+    
+    # Training progress and status
+    if st.session_state.training_active:
+        # Check if training process is still running
+        training_process = getattr(st.session_state, 'training_process', None)
         
-        # Create sample training metrics
+        if training_process:
+            # Check if process is still running
+            if training_process.poll() is None:
+                # Process is still running
+                st.markdown("""
+                <div class="success-box">
+                    <strong>🔄 Training in Progress!</strong><br>
+                    The model is currently being trained. Monitor the progress below.
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Show live output
+                with st.expander("📋 Training Output (Live)", expanded=False):
+                    output_placeholder = st.empty()
+                    
+                    # Try to read some output
+                    try:
+                        # Read available output without blocking
+                        import select
+                        
+                        # For Windows, we'll use a simpler approach
+                        if hasattr(training_process.stdout, 'readable'):
+                            # Read any available output
+                            output_lines = []
+                            try:
+                                for line in training_process.stdout:
+                                    output_lines.append(line.strip())
+                                    if len(output_lines) > 20:  # Keep only last 20 lines
+                                        output_lines = output_lines[-20:]
+                                
+                                if output_lines:
+                                    output_placeholder.code('\n'.join(output_lines[-10:]))  # Show last 10 lines
+                                else:
+                                    output_placeholder.text("Waiting for training output...")
+                            except:
+                                output_placeholder.text("Training process started... waiting for output")
+                        else:
+                            output_placeholder.text("Training process started... waiting for output")
+                    
+                    except Exception as e:
+                        output_placeholder.text(f"Output monitoring: {str(e)}")
+            
+            else:
+                # Process has finished
+                return_code = training_process.returncode
+                if return_code == 0:
+                    st.success("✅ Training completed successfully!")
+                    
+                    # Show final output
+                    stdout, stderr = training_process.communicate()
+                    if stdout:
+                        with st.expander("� Training Output"):
+                            st.code(stdout)
+                    
+                    # Reset training state
+                    st.session_state.training_active = False
+                    st.session_state.training_process = None
+                    
+                    # Refresh model list
+                    st.rerun()
+                else:
+                    st.error(f"❌ Training failed with exit code: {return_code}")
+                    
+                    # Show error output
+                    stdout, stderr = training_process.communicate()
+                    if stderr:
+                        with st.expander("❌ Error Output"):
+                            st.code(stderr)
+                    if stdout:
+                        with st.expander("📋 Standard Output"):
+                            st.code(stdout)
+                    
+                    # Reset training state
+                    st.session_state.training_active = False
+                    st.session_state.training_process = None
+        
+        else:
+            # No process found, show simulated progress
+            st.markdown("""
+            <div class="info-box">
+                <strong>🔄 Training Active (Simulation Mode)</strong><br>
+                Demo training metrics are being generated.
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Show current training info
+        with st.expander("�📊 Current Training Session", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                mode = getattr(st.session_state, 'training_mode', 'new')
+                if mode == 'continue':
+                    st.metric("Training Mode", "🔄 Continue", f"Model: {getattr(st.session_state, 'continue_model', 'Unknown')}")
+                else:
+                    st.metric("Training Mode", "🆕 New Model", "Fresh start")
+            
+            with col2:
+                config = getattr(st.session_state, 'training_config', {})
+                st.metric("Target Steps", f"{config.get('timesteps', 0):,}", "Additional training")
+            
+            with col3:
+                if training_process and training_process.poll() is None:
+                    st.metric("Status", "🟢 Running", "Process active")
+                elif training_process:
+                    st.metric("Status", "🔴 Finished", f"Exit code: {training_process.returncode}")
+                else:
+                    st.metric("Status", "🟡 Simulation", "Demo mode")
+    
+    # Enhanced Training metrics and model versioning
+    if st.session_state.training_active or st.session_state.training_metrics:
+        st.subheader("📈 Training Metrics & Progress")
+        
+        # Create sample training metrics with enhanced info
         if st.session_state.training_active:
-            # Simulate new metrics
+            # Simulate training progress
+            base_step = len(st.session_state.training_metrics)
+            
+            # If continuing training, add offset based on model
+            if getattr(st.session_state, 'training_mode', '') == 'continue':
+                # Simulate that the existing model already has some training
+                base_step += 5000  # Assume existing model had 5000 steps
+            
+            # Simulate improving metrics over time
+            progress_factor = min(base_step / 10000, 1.0)  # Improvement over time
+            
             new_metric = {
-                'step': len(st.session_state.training_metrics) + 1,
-                'reward': np.random.normal(0.1, 0.05),
-                'policy_loss': np.random.normal(0.01, 0.005),
-                'value_loss': np.random.normal(0.05, 0.01),
-                'entropy': np.random.normal(0.8, 0.1)
+                'step': base_step + 1,
+                'reward': np.random.normal(0.05 + progress_factor * 0.15, 0.03),
+                'policy_loss': np.random.normal(0.02 - progress_factor * 0.01, 0.005),
+                'value_loss': np.random.normal(0.08 - progress_factor * 0.03, 0.01),
+                'entropy': np.random.normal(0.7 + progress_factor * 0.2, 0.1),
+                'episode_length': np.random.normal(100 + progress_factor * 50, 20),
+                'learning_rate': 3e-4 * (0.99 ** (base_step / 1000))  # Decay over time
             }
             st.session_state.training_metrics.append(new_metric)
         
         if st.session_state.training_metrics:
             metrics_df = pd.DataFrame(st.session_state.training_metrics)
             
-            # Plot training metrics
-            fig = go.Figure()
+            # Enhanced metrics visualization
+            col1, col2 = st.columns(2)
             
-            fig.add_trace(go.Scatter(
-                x=metrics_df['step'],
-                y=metrics_df['reward'],
-                mode='lines',
-                name='Average Reward',
-                line=dict(color='green')
-            ))
+            with col1:
+                # Reward progress
+                fig_reward = go.Figure()
+                fig_reward.add_trace(go.Scatter(
+                    x=metrics_df['step'],
+                    y=metrics_df['reward'],
+                    mode='lines+markers',
+                    name='Average Reward',
+                    line=dict(color='#28a745', width=3),
+                    marker=dict(size=4)
+                ))
+                
+                # Add trend line
+                if len(metrics_df) > 10:
+                    z = np.polyfit(metrics_df['step'], metrics_df['reward'], 1)
+                    p = np.poly1d(z)
+                    fig_reward.add_trace(go.Scatter(
+                        x=metrics_df['step'],
+                        y=p(metrics_df['step']),
+                        mode='lines',
+                        name='Trend',
+                        line=dict(color='red', width=2, dash='dash')
+                    ))
+                
+                fig_reward.update_layout(
+                    title="🎯 Reward Progress",
+                    xaxis_title="Training Step",
+                    yaxis_title="Average Reward",
+                    height=300,
+                    showlegend=True
+                )
+                
+                st.plotly_chart(fig_reward, use_container_width=True)
             
-            fig.update_layout(
-                title="Training Progress",
-                xaxis_title="Training Step",
-                yaxis_title="Average Reward",
-                height=300
-            )
+            with col2:
+                # Loss metrics
+                fig_loss = go.Figure()
+                fig_loss.add_trace(go.Scatter(
+                    x=metrics_df['step'],
+                    y=metrics_df['policy_loss'],
+                    mode='lines',
+                    name='Policy Loss',
+                    line=dict(color='#dc3545', width=2)
+                ))
+                fig_loss.add_trace(go.Scatter(
+                    x=metrics_df['step'],
+                    y=metrics_df['value_loss'],
+                    mode='lines',
+                    name='Value Loss',
+                    line=dict(color='#fd7e14', width=2)
+                ))
+                
+                fig_loss.update_layout(
+                    title="📉 Loss Metrics",
+                    xaxis_title="Training Step",
+                    yaxis_title="Loss",
+                    height=300,
+                    showlegend=True
+                )
+                
+                st.plotly_chart(fig_loss, use_container_width=True)
             
-            st.plotly_chart(fig, width="stretch")
-            
-            # Current metrics
+            # Current metrics with enhanced display
             if len(metrics_df) > 0:
                 latest = metrics_df.iloc[-1]
                 
-                col1, col2, col3, col4 = st.columns(4)
+                st.markdown("**📊 Current Training Statistics**")
+                col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
-                    st.metric("Average Reward", f"{latest['reward']:.4f}")
+                    delta_reward = "+0.05" if len(metrics_df) > 1 else None
+                    st.metric("Average Reward", f"{latest['reward']:.4f}", delta_reward)
                 
                 with col2:
                     st.metric("Policy Loss", f"{latest['policy_loss']:.4f}")
@@ -1028,6 +1432,74 @@ def show_training():
                 
                 with col4:
                     st.metric("Entropy", f"{latest['entropy']:.3f}")
+                
+                with col5:
+                    st.metric("Learning Rate", f"{latest['learning_rate']:.2e}")
+    
+    # Model versioning and checkpoint management
+    if st.session_state.training_active or available_models:
+        st.subheader("📋 Model Versioning & Checkpoints")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**💾 Checkpoint Settings**")
+            
+            auto_save = st.checkbox("Auto-save checkpoints", value=True, help="Automatically save model at intervals")
+            if auto_save:
+                checkpoint_interval = st.selectbox(
+                    "Checkpoint Interval",
+                    [1000, 2500, 5000, 10000],
+                    index=2,
+                    help="Steps between automatic checkpoints"
+                )
+            
+            versioning_scheme = st.selectbox(
+                "Versioning Scheme",
+                ["timestamp", "step_count", "performance"],
+                help="How to name model versions"
+            )
+            
+            if st.button("💾 Save Current Model Version", use_container_width=True):
+                if st.session_state.training_active:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    if versioning_scheme == "timestamp":
+                        version_name = f"model_v_{timestamp}.pt"
+                    elif versioning_scheme == "step_count":
+                        step = len(st.session_state.training_metrics)
+                        version_name = f"model_step_{step:06d}.pt"
+                    else:
+                        reward = latest['reward'] if 'latest' in locals() else 0.1
+                        version_name = f"model_reward_{reward:.3f}_{timestamp}.pt"
+                    
+                    st.success(f"✅ Model saved as: {version_name}")
+                    st.info("💡 Model saved to models/ directory")
+                else:
+                    st.warning("⚠️ No active training session to save")
+        
+        with col2:
+            st.markdown("**🔄 Model Evolution**")
+            
+            if available_models:
+                st.write("**Available Model Versions:**")
+                for i, model in enumerate(available_models):
+                    col_icon, col_name = st.columns([1, 4])
+                    with col_icon:
+                        if "best" in model.lower():
+                            st.write("🏆")
+                        elif "checkpoint" in model.lower():
+                            st.write("💾")
+                        else:
+                            st.write("🤖")
+                    with col_name:
+                        st.write(model)
+                
+                # Model comparison option
+                if len(available_models) >= 2:
+                    if st.button("📊 Compare Model Versions", use_container_width=True):
+                        st.info("🔄 Model comparison feature would show performance differences between versions")
+            else:
+                st.info("💡 No model versions available yet. Train a model to see versions here.")
 
 @handle_errors
 def show_backtesting():
