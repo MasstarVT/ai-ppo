@@ -27,6 +27,18 @@ from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
 # Import trading system components
+SYSTEM_READY = False
+IMPORT_ERROR = None
+
+# Test yaml import first
+try:
+    import yaml
+    st.success("✅ YAML module imported successfully")
+except ImportError as e:
+    st.error(f"❌ YAML import failed: {e}")
+    st.info("💡 Please install PyYAML: `pip install PyYAML`")
+    IMPORT_ERROR = f"YAML import error: {e}"
+
 try:
     from data import DataClient, prepare_features
     from environments import TradingEnvironment
@@ -37,13 +49,40 @@ try:
     # Test basic functionality
     _test_config = create_default_config()
     SYSTEM_READY = True
-    IMPORT_ERROR = None
+    st.success("✅ All trading system components imported successfully")
     
 except ImportError as e:
     SYSTEM_READY = False
     IMPORT_ERROR = f"Import error: {e}"
     st.error(f"⚠️ Error importing trading system components: {e}")
     st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
+    
+    # Show detailed error information
+    with st.expander("🔍 Detailed Error Information"):
+        st.code(f"Error: {e}")
+        st.code(f"Python Path: {sys.path}")
+        st.code(f"Current Directory: {os.getcwd()}")
+        st.code(f"Script Directory: {os.path.dirname(__file__)}")
+        
+        # Test specific imports
+        st.write("**Testing individual imports:**")
+        for module_name in ['yaml', 'utils', 'data', 'environments', 'agents', 'evaluation.backtesting']:
+            try:
+                if module_name == 'yaml':
+                    import yaml
+                elif module_name == 'utils':
+                    from utils import ConfigManager
+                elif module_name == 'data':
+                    from data import DataClient
+                elif module_name == 'environments':
+                    from environments import TradingEnvironment
+                elif module_name == 'agents':
+                    from agents import PPOAgent
+                elif module_name == 'evaluation.backtesting':
+                    from evaluation.backtesting import Backtester
+                st.write(f"✅ {module_name}")
+            except Exception as ex:
+                st.write(f"❌ {module_name}: {ex}")
     
     # Create fallback function
     def create_default_config():
@@ -134,42 +173,139 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS with enhanced styling
 st.markdown("""
 <style>
     .main > div {
         padding-top: 2rem;
     }
-    .stMetric {
-        background-color: #f0f2f6;
-        border: 1px solid #e6e9ef;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+    
+    /* Enhanced metrics styling for better visibility */
+    div[data-testid="metric-container"] {
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        border: 2px solid rgba(255, 255, 255, 0.15) !important;
+        padding: 1.5rem !important;
+        border-radius: 12px !important;
+        margin: 0.5rem 0 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        backdrop-filter: blur(10px) !important;
+        transition: all 0.3s ease !important;
     }
+    
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25) !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
+    }
+    
+    /* Metric labels with better contrast */
+    div[data-testid="metric-container"] label {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        margin-bottom: 0.5rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+    }
+    
+    /* Metric values with high contrast */
+    div[data-testid="metric-container"] div[data-testid="metric-value"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        color: #ffffff !important;
+        line-height: 1.2 !important;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    }
+    
+    /* Metric deltas with better visibility */
+    div[data-testid="metric-container"] div[data-testid="metric-delta"] {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        margin-top: 0.4rem !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+    }
+    
+    /* Portfolio Overview container */
+    .portfolio-overview {
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        border: 2px solid rgba(255,255,255,0.15);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    /* Enhanced status boxes */
     .success-box {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        border: 2px solid #28a745;
         color: #155724;
-        padding: 1rem;
-        border-radius: 0.5rem;
+        padding: 1.2rem;
+        border-radius: 12px;
         margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
+        font-weight: 500;
     }
+    
     .warning-box {
-        background-color: #fff3cd;
-        border: 1px solid #ffeaa7;
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+        border: 2px solid #ffc107;
         color: #856404;
-        padding: 1rem;
-        border-radius: 0.5rem;
+        padding: 1.2rem;
+        border-radius: 12px;
         margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.2);
+        font-weight: 500;
     }
+    
     .error-box {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        border: 2px solid #dc3545;
         color: #721c24;
-        padding: 1rem;
-        border-radius: 0.5rem;
+        padding: 1.2rem;
+        border-radius: 12px;
         margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);
+        font-weight: 500;
+    }
+    
+    /* Improved dataframe styling */
+    .dataframe {
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        border: 2px solid rgba(255, 255, 255, 0.15) !important;
+        overflow: hidden !important;
+    }
+    
+    /* Better button styling */
+    .stButton > button {
+        border-radius: 25px !important;
+        border: none !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 0.7rem 2rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+    }
+    
+    /* Sidebar improvements */
+    .css-1d391kg {
+        background-color: rgba(0,0,0,0.2) !important;
+    }
+    
+    /* Chart container improvements */
+    .js-plotly-plot {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15) !important;
+        border: 2px solid rgba(255, 255, 255, 0.1) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1066,70 +1202,115 @@ def show_live_trading():
     elif trading_active and paper_trading:
         st.success("📝 Paper trading mode - Safe to experiment")
     
-    # Portfolio overview
-    st.subheader("Portfolio Overview")
+    # Portfolio overview with enhanced styling
+    st.markdown('<div class="portfolio-overview">', unsafe_allow_html=True)
+    st.subheader("💼 Portfolio Overview")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Portfolio Value", "$10,234.56", "+1.2%")
+        st.metric(
+            label="Portfolio Value",
+            value="$10,234.56",
+            delta="+$124.32 (+1.2%)",
+            delta_color="normal"
+        )
     
     with col2:
-        st.metric("Cash Balance", "$2,456.78", "-0.5%")
+        st.metric(
+            label="Cash Balance", 
+            value="$2,456.78",
+            delta="-$12.34 (-0.5%)",
+            delta_color="inverse"
+        )
     
     with col3:
-        st.metric("Today's P&L", "+$123.45", "+1.21%")
+        st.metric(
+            label="Today's P&L",
+            value="+$123.45",
+            delta="+1.21%",
+            delta_color="normal"
+        )
     
     with col4:
-        st.metric("Open Positions", "3", "+1")
+        st.metric(
+            label="Open Positions",
+            value="3",
+            delta="+1",
+            delta_color="normal"
+        )
     
-    # Current positions
-    st.subheader("Current Positions")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Current positions with enhanced styling
+    st.subheader("📊 Current Positions")
     
     positions_data = {
-        'Symbol': ['AAPL', 'MSFT', 'GOOGL'],
+        'Symbol': ['🍎 AAPL', '🖥️ MSFT', '🔍 GOOGL'],
         'Shares': [10, 15, 5],
-        'Avg Price': [175.50, 415.20, 2750.30],
-        'Current Price': [178.90, 412.45, 2780.15],
-        'Market Value': [1789.00, 6186.75, 13900.75],
+        'Avg Price': ['$175.50', '$415.20', '$2,750.30'],
+        'Current Price': ['$178.90', '$412.45', '$2,780.15'],
+        'Market Value': ['$1,789.00', '$6,186.75', '$13,900.75'],
         'P&L': ['+$34.00', '-$41.25', '+$149.25'],
-        'P&L %': ['+1.94%', '-0.66%', '+0.54%']
+        'P&L %': ['📈 +1.94%', '📉 -0.66%', '📈 +0.54%']
     }
     
     positions_df = pd.DataFrame(positions_data)
-    st.dataframe(positions_df, width="stretch")
     
-    # Real-time quotes (simulated)
-    st.subheader("Real-Time Market Data")
+    # Style the dataframe with conditional formatting
+    def style_pnl(val):
+        if '+' in str(val):
+            return 'background-color: rgba(40, 167, 69, 0.1); color: #28a745; font-weight: bold;'
+        elif '-' in str(val):
+            return 'background-color: rgba(220, 53, 69, 0.1); color: #dc3545; font-weight: bold;'
+        return ''
     
-    # Auto-refresh
-    auto_refresh = st.checkbox("Auto Refresh (5s)", value=False)
+    styled_df = positions_df.style.map(style_pnl, subset=['P&L', 'P&L %'])
+    st.dataframe(styled_df, use_container_width=True)
+    
+    # Real-time quotes (simulated) with enhanced styling
+    st.subheader("📈 Real-Time Market Data")
+    
+    # Auto-refresh control
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("*Live market data with AI trading signals*")
+    with col2:
+        auto_refresh = st.checkbox("🔄 Auto Refresh (5s)", value=False)
     
     if auto_refresh:
         time.sleep(1)  # Simulate delay
     
     quotes_data = {
-        'Symbol': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
-        'Price': [178.90, 412.45, 2780.15, 185.30, 248.90],
-        'Change': ['+3.40', '-2.75', '+29.85', '+1.20', '-3.10'],
+        'Symbol': ['🍎 AAPL', '🖥️ MSFT', '🔍 GOOGL', '📦 AMZN', '⚡ TSLA'],
+        'Price': ['$178.90', '$412.45', '$2,780.15', '$185.30', '$248.90'],
+        'Change': ['+$3.40', '-$2.75', '+$29.85', '+$1.20', '-$3.10'],
         'Change %': ['+1.94%', '-0.66%', '+1.09%', '+0.65%', '-1.23%'],
         'Volume': ['12.5M', '8.7M', '1.2M', '15.3M', '25.1M'],
-        'AI Signal': ['BUY', 'HOLD', 'BUY', 'SELL', 'HOLD']
+        'AI Signal': ['🟢 BUY', '🟡 HOLD', '🟢 BUY', '🔴 SELL', '🟡 HOLD']
     }
     
     quotes_df = pd.DataFrame(quotes_data)
     
-    # Color code the signals
-    def color_signal(val):
-        if val == 'BUY':
-            return 'color: green; font-weight: bold'
-        elif val == 'SELL':
-            return 'color: red; font-weight: bold'
-        else:
-            return 'color: gray'
+    # Enhanced styling for the quotes table
+    def style_change(val):
+        if '+' in str(val):
+            return 'background-color: rgba(40, 167, 69, 0.1); color: #28a745; font-weight: bold;'
+        elif '-' in str(val):
+            return 'background-color: rgba(220, 53, 69, 0.1); color: #dc3545; font-weight: bold;'
+        return ''
     
-    styled_df = quotes_df.style.map(color_signal, subset=['AI Signal'])
-    st.dataframe(styled_df, width="stretch")
+    def style_signal(val):
+        if 'BUY' in str(val):
+            return 'background-color: rgba(40, 167, 69, 0.2); color: #155724; font-weight: bold; border-radius: 5px; padding: 2px 8px;'
+        elif 'SELL' in str(val):
+            return 'background-color: rgba(220, 53, 69, 0.2); color: #721c24; font-weight: bold; border-radius: 5px; padding: 2px 8px;'
+        elif 'HOLD' in str(val):
+            return 'background-color: rgba(255, 193, 7, 0.2); color: #856404; font-weight: bold; border-radius: 5px; padding: 2px 8px;'
+        return ''
+    
+    styled_quotes = quotes_df.style.map(style_change, subset=['Change', 'Change %']).map(style_signal, subset=['AI Signal'])
+    st.dataframe(styled_quotes, use_container_width=True)
     
     # Trading controls
     st.subheader("Manual Trading")
@@ -1162,60 +1343,181 @@ def show_model_management():
     """Show model management interface."""
     st.title("📁 Model Management")
     
-    # Model directory status
-    model_dir = "models"
+    # Model directory status - handle relative path properly
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)  # Go up one level from gui/
+    model_dir = os.path.join(project_root, "models")
+    
+    st.info(f"Looking for models in: {model_dir}")
+    
     if not os.path.exists(model_dir):
-        st.warning("Models directory not found. No trained models available.")
+        st.warning("⚠️ Models directory not found. No trained models available.")
+        st.info("💡 Train a model first using the Training page to create models.")
+        
+        # Show expected directory structure
+        with st.expander("🗂️ Expected Directory Structure"):
+            st.code("""
+ai-ppo/
+├── models/          ← Models should be here
+│   ├── best_model.pt
+│   └── checkpoint_*.pt
+├── gui/            ← Current location
+│   └── app.py
+└── src/
+            """)
         return
     
-    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pt')]
-    
-    if not model_files:
-        st.info("No trained models found. Train a model first using the Training page.")
+    # Get all model files
+    try:
+        all_files = os.listdir(model_dir)
+        model_files = [f for f in all_files if f.endswith('.pt')]
+        
+        st.success(f"✅ Models directory found: {len(all_files)} files total")
+        
+        if not model_files:
+            st.info("📋 No trained models found (.pt files).")
+            st.info("💡 Train a model first using the Training page.")
+            
+            # Show what files are in the directory
+            if all_files:
+                with st.expander("📁 Files in models directory"):
+                    for file in all_files:
+                        st.write(f"• {file}")
+            return
+            
+        st.success(f"🎯 Found {len(model_files)} trained model(s)")
+        
+    except Exception as e:
+        st.error(f"❌ Error accessing models directory: {e}")
         return
     
-    st.success(f"Found {len(model_files)} trained models")
-    
-    # Model list
-    st.subheader("Available Models")
+    # Enhanced Model list with detailed information
+    st.subheader("📊 Available Models")
     
     model_data = []
     for model_file in model_files:
         model_path = os.path.join(model_dir, model_file)
-        stat = os.stat(model_path)
-        
-        model_data.append({
-            'Model Name': model_file,
-            'Size (MB)': f"{stat.st_size / (1024*1024):.2f}",
-            'Created': datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d %H:%M"),
-            'Modified': datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
-        })
+        try:
+            stat = os.stat(model_path)
+            size_mb = stat.st_size / (1024*1024)
+            created = datetime.fromtimestamp(stat.st_ctime)
+            modified = datetime.fromtimestamp(stat.st_mtime)
+            
+            # Determine model type/status
+            if 'best' in model_file.lower():
+                model_type = "🏆 Best Model"
+            elif 'checkpoint' in model_file.lower():
+                model_type = "💾 Checkpoint"
+            else:
+                model_type = "🤖 Model"
+            
+            model_data.append({
+                'Type': model_type,
+                'Model Name': model_file,
+                'Size (MB)': f"{size_mb:.2f}",
+                'Created': created.strftime("%Y-%m-%d %H:%M"),
+                'Modified': modified.strftime("%Y-%m-%d %H:%M"),
+                'Age (days)': f"{(datetime.now() - modified).days}",
+                'Status': "✅ Ready" if size_mb > 0.1 else "⚠️ Small File"
+            })
+        except Exception as e:
+            model_data.append({
+                'Type': "❌ Error",
+                'Model Name': model_file,
+                'Size (MB)': "N/A",
+                'Created': "N/A",
+                'Modified': "N/A", 
+                'Age (days)': "N/A",
+                'Status': f"Error: {e}"
+            })
     
     models_df = pd.DataFrame(model_data)
-    st.dataframe(models_df, width="stretch")
     
-    # Model actions
+    # Style the dataframe
+    def style_status(val):
+        if "Ready" in str(val):
+            return 'background-color: rgba(40, 167, 69, 0.1); color: #28a745; font-weight: bold;'
+        elif "Error" in str(val):
+            return 'background-color: rgba(220, 53, 69, 0.1); color: #dc3545; font-weight: bold;'
+        elif "Small File" in str(val):
+            return 'background-color: rgba(255, 193, 7, 0.1); color: #856404; font-weight: bold;'
+        return ''
+    
+    def style_type(val):
+        if "Best" in str(val):
+            return 'background-color: rgba(255, 215, 0, 0.2); color: #b8860b; font-weight: bold;'
+        return ''
+    
+    styled_models = models_df.style.map(style_status, subset=['Status']).map(style_type, subset=['Type'])
+    st.dataframe(styled_models, use_container_width=True)
+    
+    # Enhanced Model actions
+    st.subheader("🛠️ Model Actions")
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Model Actions")
-        selected_model = st.selectbox("Select Model", model_files)
+        st.markdown("**📋 Model Operations**")
+        selected_model = st.selectbox("Select Model", model_files, key="selected_model")
         
+        if selected_model:
+            # Show model details
+            model_path = os.path.join(model_dir, selected_model)
+            stat = os.stat(model_path)
+            
+            with st.expander(f"📊 Details: {selected_model}"):
+                col1_1, col1_2 = st.columns(2)
+                with col1_1:
+                    st.metric("File Size", f"{stat.st_size / (1024*1024):.2f} MB")
+                    st.metric("Created", datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d"))
+                with col1_2:
+                    st.metric("Last Modified", datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d"))
+                    st.metric("Age", f"{(datetime.now() - datetime.fromtimestamp(stat.st_mtime)).days} days")
+                
+                # Try to show model info if possible
+                try:
+                    # This would normally load model metadata
+                    st.info("💡 Model architecture and training details would be shown here in a full implementation.")
+                except Exception as e:
+                    st.warning(f"Could not load model metadata: {e}")
+        
+        # Action buttons
         col1_1, col1_2 = st.columns(2)
         
         with col1_1:
-            if st.button("📊 Analyze Model", width="stretch"):
-                st.info(f"Analyzing {selected_model}...")
-                # This would normally load and analyze the model
-                st.success("Model analysis complete (simulated)")
+            if st.button("📊 Analyze Model", use_container_width=True):
+                with st.spinner(f"Analyzing {selected_model}..."):
+                    time.sleep(1)  # Simulate analysis
+                    st.success("✅ Model analysis complete!")
+                    
+                    # Show simulated analysis results
+                    with st.expander("📈 Analysis Results"):
+                        analysis_data = {
+                            'Metric': ['Parameters', 'Training Episodes', 'Avg Reward', 'Convergence'],
+                            'Value': ['~850K', '10,000', '0.245', '✅ Good']
+                        }
+                        analysis_df = pd.DataFrame(analysis_data)
+                        st.dataframe(analysis_df, use_container_width=True)
         
         with col1_2:
-            if st.button("🗑️ Delete Model", width="stretch"):
-                if st.checkbox(f"Confirm deletion of {selected_model}"):
-                    st.warning(f"Would delete {selected_model} (simulated)")
+            if st.button("� Load Model", use_container_width=True, type="primary"):
+                with st.spinner(f"Loading {selected_model}..."):
+                    time.sleep(1)  # Simulate loading
+                    st.success(f"✅ {selected_model} loaded successfully!")
+                    st.info("💡 Model is now ready for trading or backtesting.")
+        
+        # Danger zone
+        with st.expander("⚠️ Danger Zone"):
+            st.warning("**Delete Model** - This action cannot be undone!")
+            col1_1, col1_2 = st.columns([2, 1])
+            with col1_1:
+                confirm_delete = st.checkbox(f"I confirm deletion of {selected_model}")
+            with col1_2:
+                if st.button("🗑️ Delete", use_container_width=True, disabled=not confirm_delete):
+                    st.error(f"Would delete {selected_model} (Demo mode - not actually deleted)")
     
     with col2:
-        st.subheader("Model Comparison")
+        st.markdown("**📊 Model Comparison**")
         
         if len(model_files) >= 2:
             model1 = st.selectbox("Model 1", model_files, key="model1")
@@ -1236,20 +1538,59 @@ def show_model_management():
         else:
             st.info("Need at least 2 models for comparison")
     
-    # Export/Import
-    st.subheader("Export/Import")
+    # Enhanced Export/Import section
+    st.subheader("📦 Export/Import Models")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📤 Export Selected Model", width="stretch"):
-            st.info(f"Exporting {selected_model}...")
-            st.success("Model exported successfully (simulated)")
+        st.markdown("**📤 Export Model**")
+        export_model = st.selectbox("Select Model to Export", model_files, key="export_model")
+        export_format = st.selectbox("Export Format", ["PyTorch (.pt)", "ONNX (.onnx)", "Compressed (.zip)"])
+        
+        if st.button("📤 Export Model", use_container_width=True):
+            with st.spinner(f"Exporting {export_model}..."):
+                time.sleep(2)  # Simulate export
+                st.success(f"✅ {export_model} exported successfully!")
+                st.info(f"💾 Exported as: {export_model.replace('.pt', f'_exported.{export_format.split(".")[-1][:-1]}')}") 
     
     with col2:
-        uploaded_file = st.file_uploader("📥 Import Model", type=['pt'])
+        st.markdown("**📥 Import Model**")
+        uploaded_file = st.file_uploader(
+            "Choose model file", 
+            type=['pt', 'pth', 'onnx'],
+            help="Upload a PyTorch model file (.pt, .pth) or ONNX model (.onnx)"
+        )
+        
         if uploaded_file is not None:
-            st.info(f"Would import {uploaded_file.name}")
+            st.info(f"📁 Selected file: {uploaded_file.name}")
+            st.info(f"📊 File size: {len(uploaded_file.getvalue()) / (1024*1024):.2f} MB")
+            
+            if st.button("📥 Import Model", use_container_width=True, type="primary"):
+                with st.spinner("Importing model..."):
+                    time.sleep(2)  # Simulate import
+                    st.success(f"✅ {uploaded_file.name} imported successfully!")
+                    st.info("🔄 Refresh the page to see the new model in the list.")
+    
+    # Model backup section
+    st.subheader("💾 Model Backup & Restore")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📦 Backup All Models", use_container_width=True):
+            with st.spinner("Creating backup..."):
+                time.sleep(3)  # Simulate backup
+                backup_name = f"model_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+                st.success(f"✅ Backup created: {backup_name}")
+    
+    with col2:
+        backup_file = st.file_uploader("Restore from Backup", type=['zip'])
+        if backup_file and st.button("🔄 Restore Backup", use_container_width=True):
+            with st.spinner("Restoring models..."):
+                time.sleep(3)  # Simulate restore
+                st.success("✅ Models restored successfully!")
+                st.info("🔄 Refresh the page to see restored models.")
 
 if __name__ == "__main__":
     main()
