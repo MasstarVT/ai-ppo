@@ -1,0 +1,245 @@
+"""
+Data client for fetching stock market data from various providers.
+Since TradingView doesn't have an official public API, we use alternative providers.
+"""
+
+import pandas as pd
+import yfinance as yf
+import requests
+import time
+from typing import Dict, List, Optional, Union
+from datetime import datetime, timedelta
+import logging
+from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
+
+
+class DataProvider(ABC):
+    """Abstract base class for data providers."""
+    
+    @abstractmethod
+    def get_historical_data(self, symbol: str, period: str, interval: str) -> pd.DataFrame:
+        """Get historical price data."""
+        pass
+    
+    @abstractmethod
+    def get_realtime_data(self, symbol: str) -> Dict:
+        """Get real-time price data."""
+        pass
+
+
+class YFinanceProvider(DataProvider):
+    """Yahoo Finance data provider using yfinance library."""
+    
+    def __init__(self):
+        self.name = "yfinance"
+    
+    def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1h") -> pd.DataFrame:
+        """
+        Get historical price data from Yahoo Finance.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            period: Time period ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max')
+            interval: Data interval ('1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo')
+        
+        Returns:
+            DataFrame with OHLCV data
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period=period, interval=interval)
+            
+            if data.empty:
+                logger.warning(f"No data found for symbol {symbol}")
+                return pd.DataFrame()
+            
+            # Rename columns to standard format
+            data.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            data.index.name = 'datetime'
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error fetching historical data for {symbol}: {e}")
+            return pd.DataFrame()
+    
+    def get_realtime_data(self, symbol: str) -> Dict:
+        """Get real-time price data."""
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            return {
+                'symbol': symbol,
+                'price': info.get('regularMarketPrice', 0),
+                'change': info.get('regularMarketChange', 0),
+                'change_percent': info.get('regularMarketChangePercent', 0),
+                'volume': info.get('regularMarketVolume', 0),
+                'timestamp': datetime.now()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fetching real-time data for {symbol}: {e}")
+            return {}
+
+
+class AlphaVantageProvider(DataProvider):
+    """Alpha Vantage data provider."""
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://www.alphavantage.co/query"
+        self.name = "alphavantage"
+    
+    def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "60min") -> pd.DataFrame:
+        """Get historical data from Alpha Vantage."""
+        try:
+            # Map interval to Alpha Vantage format
+            interval_map = {
+                "1m": "1min", "5m": "5min", "15m": "15min", 
+                "30m": "30min", "1h": "60min", "1d": "daily"
+            }
+            av_interval = interval_map.get(interval, "60min")
+            
+            if av_interval == "daily":
+                function = "TIME_SERIES_DAILY"
+            else:
+                function = "TIME_SERIES_INTRADAY"
+            
+            params = {
+                'function': function,
+                'symbol': symbol,
+                'apikey': self.api_key,
+                'outputsize': 'full'
+            }
+            
+            if function == "TIME_SERIES_INTRADAY":
+                params['interval'] = av_interval
+            
+            response = requests.get(self.base_url, params=params)
+            data = response.json()
+            
+            if 'Error Message' in data:
+                logger.error(f"Alpha Vantage error: {data['Error Message']}")
+                return pd.DataFrame()
+            
+            # Parse the time series data
+            if function == "TIME_SERIES_INTRADAY":
+                time_series_key = f'Time Series ({av_interval})'
+            else:
+                time_series_key = 'Time Series (Daily)'
+            
+            time_series = data.get(time_series_key, {})
+            
+            if not time_series:
+                logger.warning(f"No time series data found for {symbol}")
+                return pd.DataFrame()
+            
+            # Convert to DataFrame
+            df = pd.DataFrame.from_dict(time_series, orient='index')
+            df.index = pd.to_datetime(df.index)
+            df = df.sort_index()
+            
+            # Rename columns
+            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            df = df.astype(float)
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error fetching Alpha Vantage data for {symbol}: {e}")
+            return pd.DataFrame()
+    
+    def get_realtime_data(self, symbol: str) -> Dict:
+        """Get real-time quote from Alpha Vantage."""
+        try:
+            params = {
+                'function': 'GLOBAL_QUOTE',
+                'symbol': symbol,
+                'apikey': self.api_key
+            }
+            
+            response = requests.get(self.base_url, params=params)
+            data = response.json()
+            
+            quote = data.get('Global Quote', {})
+            
+            if not quote:
+                return {}
+            
+            return {
+                'symbol': symbol,
+                'price': float(quote.get('05. price', 0)),
+                'change': float(quote.get('09. change', 0)),
+                'change_percent': float(quote.get('10. change percent', '0%').replace('%', '')),
+                'volume': int(quote.get('06. volume', 0)),
+                'timestamp': datetime.now()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fetching Alpha Vantage real-time data for {symbol}: {e}")
+            return {}
+
+
+class DataClient:
+    """Main data client that manages different providers."""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.provider = self._initialize_provider()
+    
+    def _initialize_provider(self) -> DataProvider:
+        """Initialize the data provider based on configuration."""
+        provider_name = self.config.get('tradingview', {}).get('provider', 'yfinance')
+        
+        if provider_name == 'yfinance':
+            return YFinanceProvider()
+        elif provider_name == 'alphavantage':
+            api_key = self.config.get('data_providers', {}).get('alpha_vantage', {}).get('api_key')
+            if not api_key:
+                raise ValueError("Alpha Vantage API key is required")
+            return AlphaVantageProvider(api_key)
+        else:
+            raise ValueError(f"Unsupported data provider: {provider_name}")
+    
+    def get_historical_data(
+        self, 
+        symbol: str, 
+        period: str = "1y", 
+        interval: str = "1h"
+    ) -> pd.DataFrame:
+        """Get historical price data."""
+        logger.info(f"Fetching historical data for {symbol} (period={period}, interval={interval})")
+        return self.provider.get_historical_data(symbol, period, interval)
+    
+    def get_multiple_symbols_data(
+        self, 
+        symbols: List[str], 
+        period: str = "1y", 
+        interval: str = "1h"
+    ) -> Dict[str, pd.DataFrame]:
+        """Get historical data for multiple symbols."""
+        data = {}
+        for symbol in symbols:
+            logger.info(f"Fetching data for {symbol}")
+            df = self.get_historical_data(symbol, period, interval)
+            if not df.empty:
+                data[symbol] = df
+            time.sleep(0.1)  # Rate limiting
+        return data
+    
+    def get_realtime_data(self, symbol: str) -> Dict:
+        """Get real-time price data."""
+        return self.provider.get_realtime_data(symbol)
+    
+    def get_realtime_multiple(self, symbols: List[str]) -> Dict[str, Dict]:
+        """Get real-time data for multiple symbols."""
+        data = {}
+        for symbol in symbols:
+            quote = self.get_realtime_data(symbol)
+            if quote:
+                data[symbol] = quote
+            time.sleep(0.1)  # Rate limiting
+        return data

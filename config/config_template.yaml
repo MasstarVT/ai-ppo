@@ -1,0 +1,90 @@
+# Trading Configuration
+trading:
+  symbols: ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+  timeframe: "1h"  # 1m, 5m, 15m, 1h, 4h, 1d
+  initial_balance: 10000
+  max_position_size: 0.1  # 10% of portfolio per trade
+  transaction_cost: 0.001  # 0.1% per trade
+  slippage: 0.0005  # 0.05%
+  
+# TradingView API Configuration
+tradingview:
+  # Note: TradingView doesn't have official API, using alternative data sources
+  # You can use yfinance, Alpha Vantage, or other providers
+  provider: "yfinance"  # yfinance, alphavantage, polygon
+  api_key: ""  # Required for some providers
+  websocket_url: ""
+  
+# Alternative data providers
+data_providers:
+  alpha_vantage:
+    api_key: "YOUR_ALPHA_VANTAGE_API_KEY"
+    base_url: "https://www.alphavantage.co/query"
+  
+  polygon:
+    api_key: "YOUR_POLYGON_API_KEY"
+    base_url: "https://api.polygon.io"
+
+# PPO Hyperparameters
+ppo:
+  learning_rate: 3e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  
+# Neural Network Architecture
+network:
+  policy_layers: [256, 256]
+  value_layers: [256, 256]
+  activation: "tanh"
+  
+# Training Configuration
+training:
+  total_timesteps: 1000000
+  eval_freq: 10000
+  n_eval_episodes: 10
+  save_freq: 50000
+  log_interval: 1000
+  
+# Environment Configuration
+environment:
+  lookback_window: 50  # Number of past observations
+  normalize_observations: true
+  reward_scaling: 1.0
+  max_episode_steps: 1000
+  
+# Technical Indicators
+indicators:
+  sma_periods: [10, 20, 50]
+  ema_periods: [12, 26]
+  rsi_period: 14
+  macd_periods: [12, 26, 9]
+  bollinger_period: 20
+  bollinger_std: 2
+  
+# Risk Management
+risk_management:
+  max_drawdown: 0.2  # 20%
+  var_confidence: 0.05  # 5% VaR
+  max_leverage: 2.0
+  position_concentration_limit: 0.3  # 30% max in single position
+  
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  log_to_file: true
+  use_tensorboard: true
+  use_wandb: false
+  wandb_project: "ai-ppo-trading"
+  
+# Paths
+paths:
+  data_dir: "data"
+  model_dir: "models"
+  log_dir: "logs"
