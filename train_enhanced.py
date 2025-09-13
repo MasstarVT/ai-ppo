@@ -534,18 +534,31 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
 def main():
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(description="AI PPO Trading Model Training")
-    parser.add_argument("--mode", choices=["new", "continue"], required=True,
-                       help="Training mode: 'new' for new model, 'continue' for existing model")
-    parser.add_argument("--timesteps", type=int, required=True,
-                       help="Number of training timesteps")
+    parser.add_argument("--mode", choices=["new", "continue", "continuous"], required=True,
+                       help="Training mode: 'new' for new model, 'continue' for existing model, 'continuous' for indefinite training")
+    parser.add_argument("--timesteps", type=int, 
+                       help="Number of training timesteps (not required for continuous mode)")
     parser.add_argument("--model", type=str,
-                       help="Path to existing model (required for continue mode)")
+                       help="Path to existing model (required for continue mode, optional for continuous)")
     parser.add_argument("--save", type=str,
                        help="Path to save the trained model")
     parser.add_argument("--config", type=str,
-                       help="Path to configuration file (JSON)")
+                       help="Path to configuration file (YAML or JSON)")
+    parser.add_argument("--save-interval", type=int, default=50000,
+                       help="Save interval for continuous mode (default: 50000 timesteps)")
+    parser.add_argument("--checkpoint-interval", type=int, default=10000,
+                       help="Checkpoint interval for continuous mode (default: 10000 timesteps)")
     
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.mode in ["new", "continue"] and not args.timesteps:
+        print("❌ Error: --timesteps is required for new and continue modes")
+        sys.exit(1)
+    
+    if args.mode == "continue" and not args.model:
+        print("❌ Error: --model is required for continue mode")
+        sys.exit(1)
     
     # Load config if provided
     config = None
@@ -561,17 +574,20 @@ def main():
     
     # Execute training based on mode
     if args.mode == "continue":
-        if not args.model:
-            print("❌ Error: --model is required for continue mode")
-            sys.exit(1)
-        
         success = continue_training(
             model_path=args.model,
             additional_timesteps=args.timesteps,
             config=config,
             save_path=args.save
         )
-    else:
+    elif args.mode == "continuous":
+        success = continuous_training(
+            model_path=args.model,
+            config=config,
+            save_interval=args.save_interval,
+            checkpoint_interval=args.checkpoint_interval
+        )
+    else:  # new mode
         success = train_new_model(
             timesteps=args.timesteps,
             config=config,

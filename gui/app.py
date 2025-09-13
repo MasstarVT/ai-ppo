@@ -1491,8 +1491,8 @@ def show_training():
     with col1:
         training_mode = st.radio(
             "Select Training Mode:",
-            ["🆕 Train New Model", "🔄 Continue Existing Model"],
-            help="Choose whether to start fresh or continue training an existing model"
+            ["🆕 Train New Model", "🔄 Continue Existing Model", "♾️ Continuous Training"],
+            help="Choose whether to start fresh, continue training, or run continuous training until stopped"
         )
     
     with col2:
@@ -1515,6 +1515,58 @@ def show_training():
             else:
                 st.warning("⚠️ No existing models found. Please train a new model first.")
                 training_mode = "🆕 Train New Model"
+        
+        elif training_mode == "♾️ Continuous Training":
+            st.markdown("""
+            <div class="info-box">
+                <strong>♾️ Continuous Training Mode</strong><br>
+                Training will run indefinitely until you manually stop it.
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Option to select existing model or start fresh
+            continuous_start_mode = st.radio(
+                "Start from:",
+                ["🆕 Fresh Model", "📂 Existing Model"],
+                help="Choose whether to start continuous training from scratch or from an existing model"
+            )
+            
+            selected_model = None
+            if continuous_start_mode == "📂 Existing Model" and available_models:
+                selected_model = st.selectbox(
+                    "Select Base Model:",
+                    available_models,
+                    help="Choose an existing model to use as starting point for continuous training"
+                )
+                
+                if selected_model:
+                    model_path = os.path.join(model_dir, selected_model)
+                    if os.path.exists(model_path):
+                        stat = os.stat(model_path)
+                        st.info(f"📊 Base model: {selected_model}")
+                        st.info(f"📅 Last modified: {datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M')}")
+            
+            # Continuous training parameters
+            col_save, col_checkpoint = st.columns(2)
+            with col_save:
+                save_interval = st.number_input(
+                    "Save Interval (timesteps)",
+                    min_value=1000,
+                    max_value=500000,
+                    value=50000,
+                    step=1000,
+                    help="How often to save the model during continuous training"
+                )
+            
+            with col_checkpoint:
+                checkpoint_interval = st.number_input(
+                    "Checkpoint Interval (timesteps)",
+                    min_value=1000,
+                    max_value=100000,
+                    value=10000,
+                    step=1000,
+                    help="How often to create checkpoint saves"
+                )
     
     # Training status
     if st.session_state.training_active:
@@ -1532,11 +1584,18 @@ def show_training():
                 Configure your training parameters and start training a fresh model.
             </div>
             """, unsafe_allow_html=True)
-        else:
+        elif training_mode == "🔄 Continue Existing Model":
             st.markdown("""
             <div class="success-box">
                 <strong>🔄 Ready to Continue Training</strong><br>
                 The selected model will be loaded and training will continue from its current state.
+            </div>
+            """, unsafe_allow_html=True)
+        else:  # Continuous training
+            st.markdown("""
+            <div class="info-box">
+                <strong>♾️ Ready for Continuous Training</strong><br>
+                Training will run indefinitely until you manually stop it. Use Ctrl+C or create 'stop_training.txt' file.
             </div>
             """, unsafe_allow_html=True)
     
@@ -1548,17 +1607,25 @@ def show_training():
     with col1:
         st.markdown("**📊 Training Parameters**")
         
-        if training_mode == "🔄 Continue Existing Model":
-            st.info("💡 When continuing training, these parameters will be added to the existing model's training.")
-        
-        additional_timesteps = st.number_input(
-            "Additional Timesteps" if training_mode == "🔄 Continue Existing Model" else "Total Timesteps",
-            value=50000 if training_mode == "🔄 Continue Existing Model" else 100000,
-            min_value=10000,
-            max_value=10000000,
-            step=10000,
-            help="Number of training steps to run" + (" (in addition to existing training)" if training_mode == "🔄 Continue Existing Model" else "")
-        )
+        if training_mode == "♾️ Continuous Training":
+            st.info("💡 Continuous training runs indefinitely with periodic saves.")
+            st.markdown("**Stop Methods:**")
+            st.markdown("• Press **Ctrl+C** in terminal")
+            st.markdown(f"• Create file: `stop_training.txt`")
+            st.markdown("• Use the **Stop Training** button below")
+            
+        else:
+            if training_mode == "🔄 Continue Existing Model":
+                st.info("💡 When continuing training, these parameters will be added to the existing model's training.")
+            
+            additional_timesteps = st.number_input(
+                "Additional Timesteps" if training_mode == "🔄 Continue Existing Model" else "Total Timesteps",
+                value=50000 if training_mode == "🔄 Continue Existing Model" else 100000,
+                min_value=10000,
+                max_value=10000000,
+                step=10000,
+                help="Number of training steps to run" + (" (in addition to existing training)" if training_mode == "🔄 Continue Existing Model" else "")
+            )
         
         eval_freq = st.number_input(
             "Evaluation Frequency",
@@ -1900,14 +1967,25 @@ def show_training():
     
     with col1:
         # Dynamic button text based on training mode
-        button_text = "� Continue Training" if training_mode == "🔄 Continue Existing Model" else "�🚀 Start Training"
-        button_help = "Continue training the selected model" if training_mode == "🔄 Continue Existing Model" else "Start training a new model"
+        if training_mode == "🔄 Continue Existing Model":
+            button_text = "� Continue Training"
+            button_help = "Continue training the selected model"
+        elif training_mode == "♾️ Continuous Training":
+            button_text = "♾️ Start Continuous Training"
+            button_help = "Start continuous training (runs until manually stopped)"
+        else:
+            button_text = "🚀 Start Training"
+            button_help = "Start training a new model"
         
         # Check if we can start training
         can_start = True
         if training_mode == "🔄 Continue Existing Model" and (not available_models or not selected_model):
             can_start = False
             button_help = "No model selected for continuing training"
+        elif training_mode == "♾️ Continuous Training":
+            if continuous_start_mode == "📂 Existing Model" and (not available_models or not selected_model):
+                can_start = False
+                button_help = "No model selected for continuous training base"
         
         start_button = st.button(
             button_text, 
@@ -1959,6 +2037,55 @@ def show_training():
                     st.success(f"🔄 Started continuing training of {selected_model}!")
                     st.info(f"📊 Adding {additional_timesteps:,} more training steps")
                     
+                elif training_mode == "♾️ Continuous Training":
+                    # Create command for continuous training
+                    cmd = [
+                        sys.executable,
+                        os.path.join(project_root, "train_enhanced.py"),
+                        "--mode", "continuous",
+                        "--save-interval", str(save_interval),
+                        "--checkpoint-interval", str(checkpoint_interval)
+                    ]
+                    
+                    # Add model path if starting from existing model
+                    if continuous_start_mode == "📂 Existing Model" and selected_model:
+                        model_path = os.path.join(model_dir, selected_model)
+                        cmd.extend(["--model", model_path])
+                    
+                    # Store command for debugging
+                    st.session_state.last_training_command = cmd
+                    
+                    # Start training in background
+                    st.session_state.training_process = subprocess.Popen(
+                        cmd,
+                        cwd=project_root,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    
+                    st.session_state.training_mode = "continuous"
+                    st.session_state.training_config = {
+                        'save_interval': save_interval,
+                        'checkpoint_interval': checkpoint_interval,
+                        'start_mode': continuous_start_mode,
+                        'base_model': selected_model if continuous_start_mode == "📂 Existing Model" else None
+                    }
+                    st.success("♾️ Started continuous training!")
+                    st.info(f"💾 Saves every {save_interval:,} timesteps | Checkpoints every {checkpoint_interval:,} timesteps")
+                    if continuous_start_mode == "📂 Existing Model" and selected_model:
+                        st.info(f"📂 Starting from model: {selected_model}")
+                    else:
+                        st.info("🆕 Starting from fresh model")
+                    
+                    # Show stop instructions
+                    st.markdown("""
+                    **🛑 To Stop Continuous Training:**
+                    - Use the **Stop Training** button below
+                    - Press **Ctrl+C** in the terminal
+                    - Create a file named `stop_training.txt` in the project directory
+                    """)
+                    
                 else:
                     # Create command for new training
                     cmd = [
@@ -1967,6 +2094,9 @@ def show_training():
                         "--mode", "new",
                         "--timesteps", str(additional_timesteps)
                     ]
+                    
+                    # Store command for debugging
+                    st.session_state.last_training_command = cmd
                     
                     # Start training in background
                     st.session_state.training_process = subprocess.Popen(
@@ -2011,20 +2141,38 @@ def show_training():
                 st.rerun()
     
     with col3:
-        if st.button("🛑 Stop Training", disabled=not st.session_state.training_active, use_container_width=True):
+        stop_button_text = "🛑 Stop Continuous Training" if st.session_state.get('training_mode') == 'continuous' else "🛑 Stop Training"
+        
+        if st.button(stop_button_text, disabled=not st.session_state.training_active, use_container_width=True):
+            # For continuous training, create stop file for graceful shutdown
+            if st.session_state.get('training_mode') == 'continuous':
+                try:
+                    with open("stop_training.txt", "w") as f:
+                        f.write("Graceful stop requested from GUI")
+                    st.info("📝 Stop signal sent to continuous training (creating stop_training.txt)")
+                except Exception as e:
+                    st.error(f"❌ Error creating stop file: {str(e)}")
+            
             # Stop the actual training process if running
             training_process = getattr(st.session_state, 'training_process', None)
             if training_process and training_process.poll() is None:
                 try:
                     training_process.terminate()
-                    st.warning("🛑 Training process terminated")
+                    if st.session_state.get('training_mode') == 'continuous':
+                        st.warning("🛑 Continuous training process terminated")
+                    else:
+                        st.warning("🛑 Training process terminated")
                 except Exception as e:
                     st.error(f"❌ Error stopping training: {str(e)}")
             
             st.session_state.training_active = False
             st.session_state.training_metrics = []
             st.session_state.training_process = None
-            st.warning("🛑 Training stopped and reset")
+            
+            if st.session_state.get('training_mode') == 'continuous':
+                st.warning("🛑 Continuous training stopped")
+            else:
+                st.warning("🛑 Training stopped and reset")
             st.rerun()
     
     with col4:
