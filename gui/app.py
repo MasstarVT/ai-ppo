@@ -14,6 +14,11 @@ import json
 import time
 import threading
 import queue
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -28,9 +33,47 @@ try:
     from agents import PPOAgent
     from evaluation.backtesting import Backtester
     from utils import ConfigManager, create_default_config, format_currency, format_percentage
+    
+    # Test basic functionality
+    _test_config = create_default_config()
+    SYSTEM_READY = True
+    IMPORT_ERROR = None
+    
 except ImportError as e:
-    st.error(f"Error importing trading system components: {e}")
-    st.stop()
+    SYSTEM_READY = False
+    IMPORT_ERROR = f"Import error: {e}"
+    st.error(f"⚠️ Error importing trading system components: {e}")
+    st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
+    
+except Exception as e:
+    SYSTEM_READY = False
+    IMPORT_ERROR = f"System error: {e}"
+    st.error(f"⚠️ System initialization error: {e}")
+
+
+def handle_errors(func):
+    """Decorator to handle errors in GUI functions gracefully."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            st.error(f"❌ Error in {func.__name__}: {str(e)}")
+            st.info("💡 Please check your configuration and try again.")
+            logger.error(f"GUI error in {func.__name__}: {e}", exc_info=True)
+            return None
+    return wrapper
+
+
+@handle_errors
+def show_system_status():
+    """Show system status and health checks."""
+    if not SYSTEM_READY:
+        st.error("🔴 System Not Ready")
+        st.warning(f"Issue: {IMPORT_ERROR}")
+        st.info("Please resolve the issues above before using the system.")
+        return False
+    
+    return True
 
 # Page configuration
 st.set_page_config(
@@ -90,6 +133,10 @@ if 'training_metrics' not in st.session_state:
 
 def main():
     """Main application function."""
+    
+    # Check system status first
+    if not show_system_status():
+        return
     
     # Sidebar navigation
     with st.sidebar:
@@ -161,6 +208,7 @@ def main():
     elif selected == "Model Management":
         show_model_management()
 
+@handle_errors
 def show_dashboard():
     """Show main dashboard."""
     st.title("📈 AI PPO Trading System Dashboard")
@@ -228,7 +276,7 @@ def show_dashboard():
             height=400
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     
     with col2:
         st.subheader("Monthly Returns")
@@ -257,7 +305,7 @@ def show_dashboard():
             height=400
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     
     # Recent activity
     st.subheader("Recent Activity")
@@ -273,8 +321,9 @@ def show_dashboard():
     }
     
     activity_df = pd.DataFrame(activity_data)
-    st.dataframe(activity_df, use_container_width=True)
+    st.dataframe(activity_df, width="stretch")
 
+@handle_errors
 def show_configuration():
     """Show configuration management."""
     st.title("⚙️ Configuration Management")
@@ -518,7 +567,7 @@ def show_configuration():
     col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
-        if st.button("💾 Save All to File", use_container_width=True):
+        if st.button("💾 Save All to File", width="stretch"):
             try:
                 config_manager = ConfigManager()
                 config_manager.config = st.session_state.config
@@ -531,7 +580,7 @@ def show_configuration():
                 st.error(f"Error saving configuration: {e}")
     
     with col2:
-        if st.button("📂 Load from File", use_container_width=True):
+        if st.button("📂 Load from File", width="stretch"):
             try:
                 if os.path.exists("config/config.yaml"):
                     config_manager = ConfigManager("config/config.yaml")
@@ -544,11 +593,13 @@ def show_configuration():
                 st.error(f"Error loading configuration: {e}")
     
     with col3:
-        if st.button("🔄 Reset to Defaults", use_container_width=True):
+        if st.button("🔄 Reset to Defaults", width="stretch"):
             st.session_state.config = create_default_config()
             st.success("Configuration reset to defaults")
             st.experimental_rerun()
 
+@handle_errors
+@handle_errors
 def show_data_analysis():
     """Show data analysis page."""
     st.title("📊 Data Analysis")
@@ -612,7 +663,7 @@ def show_data_analysis():
                 height=400
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             # Statistics
             col1, col2, col3, col4 = st.columns(4)
@@ -632,6 +683,7 @@ def show_data_analysis():
                 avg_volume = data['Volume'].mean()
                 st.metric("Avg Volume", f"{avg_volume:,.0f}")
 
+@handle_errors
 def show_training():
     """Show training interface."""
     st.title("🎯 Model Training")
@@ -707,19 +759,19 @@ def show_training():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("🚀 Start Training", disabled=st.session_state.training_active, use_container_width=True):
+        if st.button("🚀 Start Training", disabled=st.session_state.training_active, width="stretch"):
             st.session_state.training_active = True
             st.success("Training started! (Simulated)")
             st.experimental_rerun()
     
     with col2:
-        if st.button("⏸️ Pause Training", disabled=not st.session_state.training_active, use_container_width=True):
+        if st.button("⏸️ Pause Training", disabled=not st.session_state.training_active, width="stretch"):
             st.session_state.training_active = False
             st.info("Training paused")
             st.experimental_rerun()
     
     with col3:
-        if st.button("🛑 Stop Training", disabled=not st.session_state.training_active, use_container_width=True):
+        if st.button("🛑 Stop Training", disabled=not st.session_state.training_active, width="stretch"):
             st.session_state.training_active = False
             st.warning("Training stopped")
             st.experimental_rerun()
@@ -761,7 +813,7 @@ def show_training():
                 height=300
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             # Current metrics
             if len(metrics_df) > 0:
@@ -781,6 +833,7 @@ def show_training():
                 with col4:
                     st.metric("Entropy", f"{latest['entropy']:.3f}")
 
+@handle_errors
 def show_backtesting():
     """Show backtesting interface."""
     st.title("📊 Backtesting")
@@ -890,7 +943,7 @@ def show_backtesting():
                 legend=dict(x=0, y=1)
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             # Detailed results table
             st.subheader("Detailed Results")
@@ -921,8 +974,9 @@ def show_backtesting():
             }
             
             results_df = pd.DataFrame(results_data)
-            st.dataframe(results_df, use_container_width=True)
+            st.dataframe(results_df, width="stretch")
 
+@handle_errors
 def show_live_trading():
     """Show live trading interface."""
     st.title("📡 Live Trading Monitor")
@@ -983,7 +1037,7 @@ def show_live_trading():
     }
     
     positions_df = pd.DataFrame(positions_data)
-    st.dataframe(positions_df, use_container_width=True)
+    st.dataframe(positions_df, width="stretch")
     
     # Real-time quotes (simulated)
     st.subheader("Real-Time Market Data")
@@ -1015,7 +1069,7 @@ def show_live_trading():
             return 'color: gray'
     
     styled_df = quotes_df.style.applymap(color_signal, subset=['AI Signal'])
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(styled_df, width="stretch")
     
     # Trading controls
     st.subheader("Manual Trading")
@@ -1043,6 +1097,7 @@ def show_live_trading():
         else:
             st.error("Live trading not implemented - this is a demo interface")
 
+@handle_errors
 def show_model_management():
     """Show model management interface."""
     st.title("📁 Model Management")
@@ -1077,7 +1132,7 @@ def show_model_management():
         })
     
     models_df = pd.DataFrame(model_data)
-    st.dataframe(models_df, use_container_width=True)
+    st.dataframe(models_df, width="stretch")
     
     # Model actions
     col1, col2 = st.columns(2)
@@ -1089,13 +1144,13 @@ def show_model_management():
         col1_1, col1_2 = st.columns(2)
         
         with col1_1:
-            if st.button("📊 Analyze Model", use_container_width=True):
+            if st.button("📊 Analyze Model", width="stretch"):
                 st.info(f"Analyzing {selected_model}...")
                 # This would normally load and analyze the model
                 st.success("Model analysis complete (simulated)")
         
         with col1_2:
-            if st.button("🗑️ Delete Model", use_container_width=True):
+            if st.button("🗑️ Delete Model", width="stretch"):
                 if st.checkbox(f"Confirm deletion of {selected_model}"):
                     st.warning(f"Would delete {selected_model} (simulated)")
     
@@ -1106,7 +1161,7 @@ def show_model_management():
             model1 = st.selectbox("Model 1", model_files, key="model1")
             model2 = st.selectbox("Model 2", model_files, key="model2", index=1)
             
-            if st.button("📈 Compare Models", use_container_width=True):
+            if st.button("📈 Compare Models", width="stretch"):
                 st.info(f"Comparing {model1} vs {model2}...")
                 
                 # Simulated comparison results
@@ -1117,7 +1172,7 @@ def show_model_management():
                 }
                 
                 comparison_df = pd.DataFrame(comparison_data)
-                st.dataframe(comparison_df, use_container_width=True)
+                st.dataframe(comparison_df, width="stretch")
         else:
             st.info("Need at least 2 models for comparison")
     
@@ -1127,7 +1182,7 @@ def show_model_management():
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📤 Export Selected Model", use_container_width=True):
+        if st.button("📤 Export Selected Model", width="stretch"):
             st.info(f"Exporting {selected_model}...")
             st.success("Model exported successfully (simulated)")
     

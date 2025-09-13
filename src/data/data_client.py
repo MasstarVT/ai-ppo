@@ -11,8 +11,69 @@ from typing import Dict, List, Optional, Union
 from datetime import datetime, timedelta
 import logging
 from abc import ABC, abstractmethod
+from functools import wraps
+import random
 
 logger = logging.getLogger(__name__)
+
+
+def rate_limit(max_calls_per_minute: int = 60):
+    """
+    Decorator to rate limit API calls.
+    
+    Args:
+        max_calls_per_minute: Maximum number of calls allowed per minute
+    """
+    min_interval = 60.0 / max_calls_per_minute
+    last_called = {}
+    
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            now = time.time()
+            func_name = f"{func.__module__}.{func.__name__}"
+            
+            if func_name in last_called:
+                elapsed = now - last_called[func_name]
+                if elapsed < min_interval:
+                    sleep_time = min_interval - elapsed
+                    logger.debug(f"Rate limiting {func_name}, sleeping for {sleep_time:.2f}s")
+                    time.sleep(sleep_time)
+            
+            last_called[func_name] = time.time()
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def retry_on_failure(max_retries: int = 3, backoff_factor: float = 1.0):
+    """
+    Decorator to retry failed API calls with exponential backoff.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        backoff_factor: Factor for exponential backoff
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        sleep_time = backoff_factor * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {e}. Retrying in {sleep_time:.2f}s")
+                        time.sleep(sleep_time)
+                    else:
+                        logger.error(f"All {max_retries + 1} attempts failed for {func.__name__}")
+            
+            raise last_exception
+        return wrapper
+    return decorator
 
 
 class DataProvider(ABC):
@@ -35,6 +96,8 @@ class YFinanceProvider(DataProvider):
     def __init__(self):
         self.name = "yfinance"
     
+    @rate_limit(max_calls_per_minute=60)  # Yahoo Finance rate limiting
+    @retry_on_failure(max_retries=3, backoff_factor=1.0)
     def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1h") -> pd.DataFrame:
         """
         Get historical price data from Yahoo Finance.
@@ -55,16 +118,47 @@ class YFinanceProvider(DataProvider):
                 logger.warning(f"No data found for symbol {symbol}")
                 return pd.DataFrame()
             
-            # Rename columns to standard format
-            data.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            # Handle different possible column names from yfinance
+            original_columns = list(data.columns)
+            logger.debug(f"Original columns for {symbol}: {original_columns}")
+            
+            # Standard expected columns
+            standard_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            
+            # Only rename if we have the expected number of columns
+            if len(original_columns) >= 4:  # At least OHLC
+                # Create mapping for existing columns
+                column_mapping = {}
+                for i, std_col in enumerate(standard_columns):
+                    if i < len(original_columns):
+                        column_mapping[original_columns[i]] = std_col
+                
+                # Rename columns
+                data = data.rename(columns=column_mapping)
+                
+                # Ensure we have Volume column
+                if 'Volume' not in data.columns and len(original_columns) < 5:
+                    data['Volume'] = 0
+                    logger.warning(f"Volume data not available for {symbol}, using zeros")
+                
+                # Select only the standard columns that exist
+                available_columns = [col for col in standard_columns if col in data.columns]
+                data = data[available_columns]
+            
             data.index.name = 'datetime'
             
+            # Remove any rows with NaN values
+            data = data.dropna()
+            
+            logger.info(f"Successfully fetched {len(data)} rows of data for {symbol}")
             return data
             
         except Exception as e:
             logger.error(f"Error fetching historical data for {symbol}: {e}")
             return pd.DataFrame()
     
+    @rate_limit(max_calls_per_minute=60)
+    @retry_on_failure(max_retries=2, backoff_factor=0.5)
     def get_realtime_data(self, symbol: str) -> Dict:
         """Get real-time price data."""
         try:
@@ -93,6 +187,8 @@ class AlphaVantageProvider(DataProvider):
         self.base_url = "https://www.alphavantage.co/query"
         self.name = "alphavantage"
     
+    @rate_limit(max_calls_per_minute=5)  # Alpha Vantage has stricter limits
+    @retry_on_failure(max_retries=3, backoff_factor=2.0)
     def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "60min") -> pd.DataFrame:
         """Get historical data from Alpha Vantage."""
         try:

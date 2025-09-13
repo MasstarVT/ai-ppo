@@ -104,29 +104,34 @@ def demo_agent():
     print("DEMO 3: PPO Agent")
     print("="*50)
     
-    config = create_default_config()
-    
-    # Create dummy environment for agent dimensions
-    obs_dim = 1000  # Example observation dimension
-    action_dim = 3  # Sell, Hold, Buy
-    
-    print("Creating PPO agent...")
-    agent = PPOAgent(obs_dim, action_dim, config)
-    
-    print(f"✓ Agent created")
-    print(f"  Observation dimension: {obs_dim}")
-    print(f"  Action dimension: {action_dim}")
-    print(f"  Learning rate: {agent.lr}")
-    print(f"  Network layers: {config['network']['policy_layers']}")
-    
-    # Test action prediction
-    dummy_obs = np.zeros(obs_dim)
-    action, log_prob, value = agent.get_action(dummy_obs)
-    
-    print(f"\nSample prediction:")
-    print(f"  Action: {action}")
-    print(f"  Log probability: {log_prob:.4f}")
-    print(f"  Value estimate: {value:.4f}")
+    try:
+        config = create_default_config()
+        
+        # Create dummy environment for agent dimensions
+        obs_dim = 1000  # Example observation dimension
+        action_dim = 3  # Sell, Hold, Buy
+        
+        print("Creating PPO agent...")
+        agent = PPOAgent(obs_dim, action_dim, config)
+        
+        print(f"✓ Agent created")
+        print(f"  Observation dimension: {obs_dim}")
+        print(f"  Action dimension: {action_dim}")
+        print(f"  Learning rate: {agent.lr}")
+        print(f"  Network layers: {config['network']['policy_layers']}")
+        
+        # Test action prediction
+        dummy_obs = np.zeros(obs_dim)
+        action, log_prob, value = agent.get_action(dummy_obs)
+        
+        print(f"\nSample prediction:")
+        print(f"  Action: {int(action) if hasattr(action, 'item') else action}")
+        print(f"  Log probability: {float(log_prob) if hasattr(log_prob, 'item') else log_prob:.4f}")
+        print(f"  Value estimate: {float(value) if hasattr(value, 'item') else value:.4f}")
+        
+    except Exception as e:
+        print(f"✗ Demo failed: {e}")
+        print("Please check your setup and try again.")
 
 def demo_backtesting():
     """Demonstrate backtesting functionality."""
