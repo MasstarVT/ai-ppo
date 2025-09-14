@@ -46,6 +46,11 @@ Or directly with Streamlit:
 streamlit run gui/app.py
 ```
 
+**Windows Users**: You can also use the provided batch file:
+```bash
+quick_start.bat
+```
+
 The GUI provides an intuitive interface for:
 - Configuration management
 - Data analysis and visualization
@@ -61,34 +66,34 @@ The GUI provides an intuitive interface for:
 python -c "from src.utils import create_default_config; create_default_config('config/config.yaml')"
 ```
 
-2. **Run a demo**:
+2. **Train a model**:
 ```bash
-python demo.py
+python train_enhanced.py --mode new --timesteps 100000 --config config/config.yaml
 ```
 
-3. **Train a model**:
+3. **Continue training an existing model**:
 ```bash
-python src/train.py
+python train_enhanced.py --mode continue --model models/my_model.pt --timesteps 50000
 ```
 
-4. **Run backtesting**:
+4. **Run continuous training**:
 ```bash
-python src/backtest.py
+python train_enhanced.py --mode continuous --config config/config.yaml
 ```
 
 ### Training
 ```bash
-python src/train.py --config config/config.yaml
+python train_enhanced.py --mode new --config config/config.yaml --timesteps 100000
 ```
 
 ### Backtesting
 ```bash
-python src/backtest.py --config config/config.yaml --model models/best_model.zip
+python src/backtest.py --config config/config.yaml --model models/best_model.pt
 ```
 
 ### Live Trading (Paper Trading)
 ```bash
-python src/live_trade.py --config config/config.yaml --model models/best_model.zip --paper-trade
+python src/live_trade.py --config config/config.yaml --model models/best_model.pt --paper-trade
 ```
 
 ## Configuration
