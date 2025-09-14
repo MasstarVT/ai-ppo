@@ -62,7 +62,72 @@ except ImportError as e:
     print(f"[ERROR] Import error: {e}")
     sys.exit(1)
 
-def continue_training(model_path, additional_timesteps, config=None, save_path=None):
+def get_network_config(args):
+    """
+    Get network configuration based on command line arguments.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        dict: Network configuration
+    """
+    # Predefined network sizes
+    predefined_configs = {
+        "small": {
+            "policy_layers": [128, 128],
+            "value_layers": [128, 128]
+        },
+        "medium": {
+            "policy_layers": [256, 256], 
+            "value_layers": [256, 256]
+        },
+        "large": {
+            "policy_layers": [512, 512],
+            "value_layers": [512, 512]
+        },
+        "extra-large": {
+            "policy_layers": [1024, 512, 256],
+            "value_layers": [1024, 512, 256]
+        }
+    }
+    
+    network_config = {
+        "activation": args.activation
+    }
+    
+    # Use predefined configuration if specified
+    if args.network_size:
+        if args.network_size in predefined_configs:
+            config = predefined_configs[args.network_size]
+            network_config.update(config)
+            print(f"[INFO] Using {args.network_size} network configuration:")
+            print(f"       Policy layers: {config['policy_layers']}")
+            print(f"       Value layers: {config['value_layers']}")
+        else:
+            print(f"[WARNING] Unknown network size '{args.network_size}', using default")
+    
+    # Override with custom layer configurations if provided
+    if args.policy_layers:
+        network_config["policy_layers"] = args.policy_layers
+        print(f"[INFO] Custom policy layers: {args.policy_layers}")
+    
+    if args.value_layers:
+        network_config["value_layers"] = args.value_layers  
+        print(f"[INFO] Custom value layers: {args.value_layers}")
+    
+    # Set defaults if nothing specified
+    if "policy_layers" not in network_config:
+        network_config["policy_layers"] = [256, 256]  # Default medium size
+    if "value_layers" not in network_config:
+        network_config["value_layers"] = [256, 256]   # Default medium size
+    
+    print(f"[INFO] Activation function: {network_config['activation']}")
+    
+    return network_config
+
+
+def continue_training(model_path, additional_timesteps, config=None, save_path=None, network_config=None):
     """
     Continue training an existing model.
     
@@ -115,6 +180,16 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
     if config is None:
         config = create_default_config()
     
+    # Apply network configuration if provided
+    if network_config:
+        if 'network' not in config:
+            config['network'] = {}
+        config['network'].update(network_config)
+        print(f"[INFO] Applied custom network configuration")
+        print(f"       Policy layers: {config['network']['policy_layers']}")
+        print(f"       Value layers: {config['network']['value_layers']}")
+        print(f"       Activation: {config['network']['activation']}")
+
     print("[SETUP] Setting up training environment...")
     
     # Load training data
@@ -242,7 +317,7 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
         print(f"[ERROR] Error during training: {e}")
         return False
 
-def train_new_model(timesteps, config=None, save_path=None):
+def train_new_model(timesteps, config=None, save_path=None, network_config=None):
     """
     Train a new model from scratch.
     
@@ -258,6 +333,16 @@ def train_new_model(timesteps, config=None, save_path=None):
     if config is None:
         config = create_default_config()
     
+    # Apply network configuration if provided
+    if network_config:
+        if 'network' not in config:
+            config['network'] = {}
+        config['network'].update(network_config)
+        print(f"[INFO] Applied custom network configuration")
+        print(f"       Policy layers: {config['network']['policy_layers']}")
+        print(f"       Value layers: {config['network']['value_layers']}")
+        print(f"       Activation: {config['network']['activation']}")
+
     print("[SETUP] Setting up training environment...")
     
     # Load training data
@@ -362,7 +447,7 @@ def train_new_model(timesteps, config=None, save_path=None):
         print(f"[ERROR] Error during training: {e}")
         return False
 
-def continuous_training(model_path, config=None, save_interval=50000, checkpoint_interval=10000):
+def continuous_training(model_path, config=None, save_interval=50000, checkpoint_interval=10000, network_config=None):
     """
     Continuous training mode that runs indefinitely until manually stopped.
     
@@ -388,6 +473,16 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
     if config is None:
         config = create_default_config()
     
+    # Apply network configuration if provided
+    if network_config:
+        if 'network' not in config:
+            config['network'] = {}
+        config['network'].update(network_config)
+        print(f"[INFO] Applied custom network configuration")
+        print(f"       Policy layers: {config['network']['policy_layers']}")
+        print(f"       Value layers: {config['network']['value_layers']}")
+        print(f"       Activation: {config['network']['activation']}")
+
     print("[SETUP] Setting up training environment...")
     
     # Load training data
@@ -592,6 +687,16 @@ def main():
     parser.add_argument("--checkpoint-interval", type=int, default=10000,
                        help="Checkpoint interval for continuous mode (default: 10000 timesteps)")
     
+    # Neural network size configuration arguments
+    parser.add_argument("--network-size", choices=["small", "medium", "large", "extra-large"], 
+                       help="Predefined network size (small: [128,128], medium: [256,256], large: [512,512], extra-large: [1024,512,256])")
+    parser.add_argument("--policy-layers", type=int, nargs='+', 
+                       help="Custom policy network layer sizes (e.g., --policy-layers 512 256 128)")
+    parser.add_argument("--value-layers", type=int, nargs='+',
+                       help="Custom value network layer sizes (e.g., --value-layers 512 256 128)")
+    parser.add_argument("--activation", choices=["relu", "tanh", "leaky_relu"], default="tanh",
+                       help="Activation function for neural networks (default: tanh)")
+    
     args = parser.parse_args()
     
     # Validate arguments
@@ -615,26 +720,32 @@ def main():
             with open(args.config, 'r') as f:
                 config = json.load(f)
     
+    # Get network configuration from arguments
+    network_config = get_network_config(args)
+    
     # Execute training based on mode
     if args.mode == "continue":
         success = continue_training(
             model_path=args.model,
             additional_timesteps=args.timesteps,
             config=config,
-            save_path=args.save
+            save_path=args.save,
+            network_config=network_config
         )
     elif args.mode == "continuous":
         success = continuous_training(
             model_path=args.model,
             config=config,
             save_interval=args.save_interval,
-            checkpoint_interval=args.checkpoint_interval
+            checkpoint_interval=args.checkpoint_interval,
+            network_config=network_config
         )
     else:  # new mode
         success = train_new_model(
             timesteps=args.timesteps,
             config=config,
-            save_path=args.save
+            save_path=args.save,
+            network_config=network_config
         )
     
     if success:
