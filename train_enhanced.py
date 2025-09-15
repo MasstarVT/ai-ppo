@@ -62,6 +62,45 @@ except ImportError as e:
     print(f"[ERROR] Import error: {e}")
     sys.exit(1)
 
+def rename_model(old_path, new_name):
+    """
+    Rename an existing model file.
+    
+    Args:
+        old_path (str): Path to the existing model file
+        new_name (str): New name for the model (without .pt extension)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if not os.path.exists(old_path):
+            print(f"[ERROR] Model file not found: {old_path}")
+            return False
+        
+        # Ensure new name doesn't have .pt extension
+        if new_name.endswith('.pt'):
+            new_name = new_name[:-3]
+        
+        # Create new path
+        models_dir = os.path.dirname(old_path) or "models"
+        new_path = os.path.join(models_dir, f"{new_name}.pt")
+        
+        # Check if new path already exists
+        if os.path.exists(new_path):
+            print(f"[ERROR] A model with name '{new_name}' already exists")
+            return False
+        
+        # Rename the file
+        os.rename(old_path, new_path)
+        print(f"[SUCCESS] Model renamed from '{os.path.basename(old_path)}' to '{new_name}.pt'")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Error renaming model: {e}")
+        return False
+
+
 def get_network_config(args):
     """
     Get network configuration based on command line arguments.
@@ -539,7 +578,7 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return False
 
-def continuous_training(model_path, config=None, save_interval=50000, checkpoint_interval=10000, network_config=None):
+def continuous_training(model_path, config=None, save_interval=50000, checkpoint_interval=10000, network_config=None, model_name=None):
     """
     Continuous training mode that runs indefinitely until manually stopped.
     
@@ -722,7 +761,10 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
             # Save model at intervals
             if current_timesteps % save_interval == 0:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                save_path = f"models/continuous_model_{timestamp}.pt"
+                if model_name:
+                    save_path = f"models/{model_name}_{timestamp}.pt"
+                else:
+                    save_path = f"models/continuous_model_{timestamp}.pt"
                 
                 # Create models directory if it doesn't exist
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -801,7 +843,7 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
 def main():
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(description="AI PPO Trading Model Training")
-    parser.add_argument("--mode", choices=["new", "continue", "continuous"], required=True,
+    parser.add_argument("--mode", choices=["new", "continue", "continuous"],
                        help="Training mode: 'new' for new model, 'continue' for existing model, 'continuous' for indefinite training")
     parser.add_argument("--timesteps", type=int, 
                        help="Number of training timesteps (not required for continuous mode)")
@@ -826,9 +868,29 @@ def main():
     parser.add_argument("--activation", choices=["relu", "tanh", "leaky_relu"], default="tanh",
                        help="Activation function for neural networks (default: tanh)")
     
+    # Model naming arguments
+    parser.add_argument("--model-name", type=str,
+                       help="Custom name for the model (without .pt extension)")
+    parser.add_argument("--rename-model", type=str, nargs=2, metavar=("OLD_PATH", "NEW_NAME"),
+                       help="Rename an existing model: --rename-model path/to/model.pt new_name")
+    
     args = parser.parse_args()
     
-    # Validate arguments
+    # Handle model renaming if requested (no training mode needed)
+    if args.rename_model:
+        old_path, new_name = args.rename_model
+        success = rename_model(old_path, new_name)
+        if success:
+            print("🎉 Model renamed successfully!")
+        else:
+            print("💥 Model rename failed!")
+        sys.exit(0 if success else 1)
+    
+    # Validate arguments for training modes
+    if not args.mode:
+        print("[ERROR] Error: --mode is required for training operations")
+        sys.exit(1)
+        
     if args.mode in ["new", "continue"] and not args.timesteps:
         print("[ERROR] Error: --timesteps is required for new and continue modes")
         sys.exit(1)
@@ -852,13 +914,18 @@ def main():
     # Get network configuration from arguments
     network_config = get_network_config(args)
     
+    # Generate save path with custom name if provided
+    save_path = args.save
+    if args.model_name and not save_path:
+        save_path = f"models/{args.model_name}.pt"
+    
     # Execute training based on mode
     if args.mode == "continue":
         success = continue_training(
             model_path=args.model,
             additional_timesteps=args.timesteps,
             config=config,
-            save_path=args.save,
+            save_path=save_path,
             network_config=network_config
         )
     elif args.mode == "continuous":
@@ -867,13 +934,14 @@ def main():
             config=config,
             save_interval=args.save_interval,
             checkpoint_interval=args.checkpoint_interval,
-            network_config=network_config
+            network_config=network_config,
+            model_name=args.model_name
         )
     else:  # new mode
         success = train_new_model(
             timesteps=args.timesteps,
             config=config,
-            save_path=args.save,
+            save_path=save_path,
             network_config=network_config
         )
     

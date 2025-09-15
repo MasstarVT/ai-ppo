@@ -1631,6 +1631,40 @@ def show_training():
     # Training configuration
     st.subheader("⚙️ Training Configuration")
     
+    # Model naming section
+    st.markdown("**📝 Model Name**")
+    col_name1, col_name2 = st.columns([2, 1])
+    
+    with col_name1:
+        if training_mode == "🆕 Train New Model":
+            model_name = st.text_input(
+                "Model Name (optional)",
+                placeholder="e.g., my_trading_bot_v1",
+                help="Custom name for your model. If empty, a timestamp-based name will be used."
+            )
+        elif training_mode == "🔄 Continue Existing Model":
+            model_name = st.text_input(
+                "Save As (optional)", 
+                placeholder="e.g., improved_model_v2",
+                help="Optional new name for the continued model. If empty, will add timestamp to original name."
+            )
+        else:  # Continuous training
+            model_name = st.text_input(
+                "Model Name Prefix (optional)",
+                placeholder="e.g., continuous_trader",
+                help="Prefix for saved models during continuous training. Timestamp will be added automatically."
+            )
+    
+    with col_name2:
+        if model_name:
+            st.markdown("**Preview:**")
+            if training_mode == "♾️ Continuous Training":
+                st.code(f"{model_name}_YYYYMMDD_HHMMSS.pt")
+            else:
+                st.code(f"{model_name}.pt")
+    
+    st.markdown("---")  # Separator
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -2050,6 +2084,10 @@ def show_training():
                         "--timesteps", str(additional_timesteps)
                     ]
                     
+                    # Add model name if provided
+                    if model_name:
+                        cmd.extend(["--model-name", model_name])
+                    
                     # Store command for debugging
                     st.session_state.last_training_command = cmd
                     
@@ -2081,6 +2119,10 @@ def show_training():
                     if continuous_start_mode == "📂 Existing Model" and selected_model:
                         model_path = os.path.join(model_dir, selected_model)
                         cmd.extend(["--model", model_path])
+                    
+                    # Add model name if provided
+                    if model_name:
+                        cmd.extend(["--model-name", model_name])
                     
                     # Store command for debugging
                     st.session_state.last_training_command = cmd
@@ -2124,6 +2166,10 @@ def show_training():
                         "--mode", "new",
                         "--timesteps", str(additional_timesteps)
                     ]
+                    
+                    # Add model name if provided
+                    if model_name:
+                        cmd.extend(["--model-name", model_name])
                     
                     # Store command for debugging
                     st.session_state.last_training_command = cmd
@@ -3275,6 +3321,48 @@ ai-ppo/
                     time.sleep(1)  # Simulate loading
                     st.success(f"✅ {selected_model} loaded successfully!")
                     st.info("💡 Model is now ready for trading or backtesting.")
+        
+        # Model renaming section
+        st.markdown("**✏️ Rename Model**")
+        col_rename1, col_rename2 = st.columns([2, 1])
+        
+        with col_rename1:
+            # Extract current name without extension for default
+            current_name = selected_model.replace('.pt', '') if selected_model else ""
+            new_name = st.text_input(
+                "New Model Name",
+                value="",
+                placeholder=f"e.g., {current_name}_improved",
+                help="Enter new name without .pt extension",
+                key="rename_input"
+            )
+        
+        with col_rename2:
+            if st.button("✏️ Rename", use_container_width=True, disabled=not new_name):
+                if new_name and selected_model:
+                    old_path = os.path.join(model_dir, selected_model)
+                    
+                    # Ensure new name doesn't have .pt extension
+                    if new_name.endswith('.pt'):
+                        new_name = new_name[:-3]
+                    
+                    new_path = os.path.join(model_dir, f"{new_name}.pt")
+                    
+                    try:
+                        # Check if new name already exists
+                        if os.path.exists(new_path):
+                            st.error(f"❌ A model named '{new_name}.pt' already exists!")
+                        else:
+                            # Rename the file
+                            os.rename(old_path, new_path)
+                            st.success(f"✅ Model renamed to '{new_name}.pt'!")
+                            st.info("🔄 Refresh the page to see the updated model list.")
+                            
+                            # Clear the input
+                            st.session_state.rename_input = ""
+                            
+                    except Exception as e:
+                        st.error(f"❌ Error renaming model: {e}")
         
         # Danger zone
         with st.expander("⚠️ Danger Zone"):
