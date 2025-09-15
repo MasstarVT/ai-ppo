@@ -61,7 +61,7 @@ The GUI provides an intuitive interface for:
 
 ### Command Line Usage
 
-1. **Configure the system**:
+1. **Configure the system**:s
 ```bash
 python -c "from src.utils import create_default_config; create_default_config('config/config.yaml')"
 ```

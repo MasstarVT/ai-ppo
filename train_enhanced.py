@@ -275,15 +275,60 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
     print("[START] Starting continued training...")
     
     try:
-        # Simulate training (in a real implementation, this would be actual training)
+        # Real PPO continued training loop
         print("[DATA] Training progress:")
-        for step in range(0, additional_timesteps, 1000):
-            progress = (step / additional_timesteps) * 100
-            print(f"  Step {step:6d}/{additional_timesteps} ({progress:5.1f}%)")
+        
+        timestep = 0
+        episode = 0
+        
+        while timestep < additional_timesteps:
+            # Reset environment for new episode
+            obs = env.reset()
+            episode_reward = 0
+            episode_length = 0
             
-            # Simulate some delay
-            import time
-            time.sleep(0.1)
+            # Run episode
+            while not env.done and timestep < additional_timesteps:
+                # Check if buffer is full and needs updating
+                if agent.buffer.ptr >= agent.n_steps:
+                    # Update agent and reset buffer
+                    training_stats = agent.update()
+                    if timestep % 1000 == 0:  # Log occasionally
+                        print(f"  Updated agent - Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
+                
+                # Get action from agent
+                action, log_prob, value = agent.get_action(obs)
+                
+                # Take step in environment
+                next_obs, reward, done, info = env.step(action)
+                
+                # Store experience in buffer
+                agent.store_experience(obs, action, reward, value, log_prob, done)
+                
+                # Update tracking
+                episode_reward += reward
+                episode_length += 1
+                timestep += 1
+                obs = next_obs
+                
+                # Progress reporting
+                if timestep % 100 == 0:
+                    progress = (timestep / additional_timesteps) * 100
+                    print(f"  Step {timestep:6d}/{additional_timesteps} ({progress:5.1f}%)")
+            
+            # Finish episode
+            agent.finish_episode(obs)
+            episode += 1
+            
+            # Episode summary
+            if episode % 10 == 0:
+                episode_stats = env.get_episode_stats()
+                total_return = episode_stats.get('total_return', 0)
+                print(f"  Episode {episode}: Return {total_return:.2f}%, Reward {episode_reward:.2f}")
+        
+        # Final update if buffer has remaining data and is full
+        if agent.buffer.ptr >= agent.n_steps:
+            training_stats = agent.update()
         
         print("[OK] Continued training completed!")
         
@@ -406,15 +451,60 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
     print("[START] Starting training...")
     
     try:
-        # Simulate training
+        # Real PPO training loop
         print("[DATA] Training progress:")
-        for step in range(0, timesteps, 1000):
-            progress = (step / timesteps) * 100
-            print(f"  Step {step:6d}/{timesteps} ({progress:5.1f}%)")
+        
+        timestep = 0
+        episode = 0
+        
+        while timestep < timesteps:
+            # Reset environment for new episode
+            obs = env.reset()
+            episode_reward = 0
+            episode_length = 0
             
-            # Simulate some delay
-            import time
-            time.sleep(0.1)
+            # Run episode
+            while not env.done and timestep < timesteps:
+                # Check if buffer is full and needs updating
+                if agent.buffer.ptr >= agent.n_steps:
+                    # Update agent and reset buffer
+                    training_stats = agent.update()
+                    if timestep % 1000 == 0:  # Log occasionally
+                        print(f"  Updated agent - Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
+                
+                # Get action from agent
+                action, log_prob, value = agent.get_action(obs)
+                
+                # Take step in environment
+                next_obs, reward, done, info = env.step(action)
+                
+                # Store experience in buffer
+                agent.store_experience(obs, action, reward, value, log_prob, done)
+                
+                # Update tracking
+                episode_reward += reward
+                episode_length += 1
+                timestep += 1
+                obs = next_obs
+                
+                # Progress reporting
+                if timestep % 100 == 0:
+                    progress = (timestep / timesteps) * 100
+                    print(f"  Step {timestep:6d}/{timesteps} ({progress:5.1f}%)")
+            
+            # Finish episode
+            agent.finish_episode(obs)
+            episode += 1
+            
+            # Episode summary
+            if episode % 10 == 0:
+                episode_stats = env.get_episode_stats()
+                total_return = episode_stats.get('total_return', 0)
+                print(f"  Episode {episode}: Return {total_return:.2f}%, Reward {episode_reward:.2f}")
+        
+        # Final update if buffer has remaining data and is full
+        if agent.buffer.ptr >= agent.n_steps:
+            training_stats = agent.update()
         
         print("[OK] Training completed!")
         
@@ -444,7 +534,9 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
         return True
         
     except Exception as e:
+        import traceback
         print(f"[ERROR] Error during training: {e}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return False
 
 def continuous_training(model_path, config=None, save_interval=50000, checkpoint_interval=10000, network_config=None):
@@ -583,12 +675,49 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
             current_timesteps += batch_timesteps
             total_timesteps = total_trained_timesteps + current_timesteps
             
-            # Simulate training step
-            print(f"  Iteration {iteration:4d} | Batch timesteps: {batch_timesteps:4d} | Total: {total_timesteps:,}")
+            # Real training step - train for batch_timesteps
+            print(f"  Iteration {iteration:4d} | Training {batch_timesteps} timesteps | Total: {total_timesteps:,}")
             
-            # Simulate some training delay
-            import time
-            time.sleep(0.2)  # Faster for demo, real training would take longer
+            # Reset environment and train for this batch
+            batch_step = 0
+            episode = 0
+            
+            while batch_step < batch_timesteps:
+                # Reset environment for new episode
+                obs = env.reset()
+                episode_reward = 0
+                episode_length = 0
+                
+                # Run episode
+                while not env.done and batch_step < batch_timesteps:
+                    # Check if buffer is full and needs updating
+                    if agent.buffer.ptr >= agent.n_steps:
+                        # Update agent and reset buffer
+                        training_stats = agent.update()
+                    
+                    # Get action from agent
+                    action, log_prob, value = agent.get_action(obs)
+                    
+                    # Take step in environment
+                    next_obs, reward, done, info = env.step(action)
+                    
+                    # Store experience in buffer
+                    agent.store_experience(obs, action, reward, value, log_prob, done)
+                    
+                    # Update tracking
+                    episode_reward += reward
+                    episode_length += 1
+                    batch_step += 1
+                    obs = next_obs
+                
+                # Finish episode
+                agent.finish_episode(obs)
+                episode += 1
+            
+            # Final update if buffer has remaining data and is full
+            if agent.buffer.ptr >= agent.n_steps:
+                training_stats = agent.update()
+                print(f"    Policy Loss: {training_stats.get('policy_loss', 0):.4f}, Episodes: {episode}")
             
             # Save model at intervals
             if current_timesteps % save_interval == 0:
