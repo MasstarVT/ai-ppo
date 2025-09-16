@@ -1,8 +1,8 @@
 environment:
-  lookback_window: 60          # Increased for better market memory
-  max_episode_steps: 2000      # Longer episodes for more learning
+  lookback_window: 50
+  max_episode_steps: 1000
   normalize_observations: true
-  reward_scaling: 2.0          # Amplify rewards for better convergence
+  reward_scaling: 1.0
 
 indicators:
   bollinger_period: 20
@@ -10,7 +10,6 @@ indicators:
   ema_periods:
   - 12
   - 26
-  - 50                         # Added longer EMA
   macd_periods:
   - 12
   - 26
@@ -20,24 +19,21 @@ indicators:
   - 10
   - 20
   - 50
-  - 100                        # Added longer SMA
 
 logging:
-  level: INFO
-  log_to_file: true
-  use_tensorboard: true
+  level: WARNING              # Reduced logging for performance
+  log_to_file: false          # Disable file logging for speed
+  use_tensorboard: false      # Disable tensorboard for speed
   use_wandb: false
 
 network:
-  activation: tanh
+  activation: relu            # ReLU is faster than tanh
   policy_layers:
-  - 512                        # Larger network for complex patterns
   - 512
-  - 256
+  - 512
   value_layers:
   - 512
   - 512
-  - 256
 
 paths:
   data_dir: data
@@ -45,25 +41,25 @@ paths:
   model_dir: models
 
 ppo:
-  batch_size: 128              # Larger batch for stability
-  clip_range: 0.25             # Slightly more aggressive updates
-  ent_coef: 0.02               # Higher exploration
-  gae_lambda: 0.98             # Better long-term reward estimation
-  gamma: 0.995                 # Higher discount for long-term thinking
-  learning_rate: 0.0005        # Higher learning rate for faster convergence
+  batch_size: 256             # Larger batch size for better GPU utilization
+  clip_range: 0.2
+  ent_coef: 0.01
+  gae_lambda: 0.95
+  gamma: 0.99
+  learning_rate: 0.001        # Higher learning rate for faster convergence
   max_grad_norm: 0.5
-  n_epochs: 15                 # More epochs per update
-  n_steps: 4096                # More steps per rollout
+  n_epochs: 4                 # Reduced epochs for faster training
+  n_steps: 4096               # Larger buffer for better sampling
   vf_coef: 0.5
-
 trading:
   initial_balance: 10000
-  max_position_size: 0.2       # Allow larger positions for higher returns
+  max_position_size: 0.1
   slippage: 0.0005
   symbols:
-  - AAPL                       # Focus on high-performance stocks
-  - NVDA                       # Added NVIDIA for tech exposure
-  - TSLA                       # Added Tesla for volatility/growth
+  - AAPL
+  - MSFT
+  - GOOGL
+  - BTC/USDT
   timeframe: 1h
   transaction_cost: 0.001
 
@@ -71,8 +67,20 @@ tradingview:
   provider: yfinance
 
 training:
-  eval_freq: 5000              # More frequent evaluation
-  log_interval: 500            # More frequent logging
+  eval_freq: 50000             # Less frequent evaluation for speed
+  log_interval: 5000           # Less frequent logging
+  n_eval_episodes: 5           # Fewer evaluation episodes
+  save_freq: 100000            # Less frequent saves
+  total_timesteps: 1000000
+
+# Performance optimizations
+performance:
+  num_threads: 4               # Use multiple CPU threads
+  use_mixed_precision: false   # Disable mixed precision on CPU
+  compile_model: false         # Disable compilation on Windows (requires Visual Studio Build Tools)
+  prefetch_factor: 2           # Data loading optimization
+  pin_memory: true             # GPU memory optimization
+  non_blocking: true           # Async GPU transfers
   n_eval_episodes: 20          # More episodes for evaluation
   save_freq: 25000             # More frequent saves
   total_timesteps: 2000000     # Double the training time

@@ -1,5 +1,5 @@
 """
-Data client for fetching stock market data from various providers.
+Data client for fetching stock market data from various providers with performance optimizations.
 Since TradingView doesn't have an official public API, we use alternative providers.
 """
 
@@ -11,17 +11,60 @@ from typing import Dict, List, Optional, Union
 from datetime import datetime, timedelta
 import logging
 from abc import ABC, abstractmethod
-from functools import wraps
+from functools import wraps, lru_cache
 import random
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import pickle
+import os
 
 # Set up optimized logging for data operations
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # Changed from DEBUG to INFO for performance
+logger.setLevel(logging.WARNING)  # Reduced to WARNING for performance
+
+# Global cache for data
+_data_cache = {}
+_cache_lock = threading.Lock()
 
 
-def rate_limit(max_calls_per_minute: int = 60):
+def cache_data(ttl_hours: int = 1):
     """
-    Decorator to rate limit API calls.
+    Decorator to cache data with TTL (time to live).
+    
+    Args:
+        ttl_hours: Time to live in hours for cached data
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create cache key from function name and arguments
+            cache_key = f"{func.__name__}_{hash(str(args) + str(kwargs))}"
+            
+            with _cache_lock:
+                if cache_key in _data_cache:
+                    data, timestamp = _data_cache[cache_key]
+                    if time.time() - timestamp < ttl_hours * 3600:
+                        logger.debug(f"Cache hit for {cache_key}")
+                        return data
+                    else:
+                        # Remove expired cache entry
+                        del _data_cache[cache_key]
+            
+            # Cache miss - fetch data
+            result = func(*args, **kwargs)
+            
+            with _cache_lock:
+                _data_cache[cache_key] = (result, time.time())
+                logger.debug(f"Cached data for {cache_key}")
+            
+            return result
+        return wrapper
+    return decorator
+
+
+def rate_limit(max_calls_per_minute: int = 120):  # Increased limit for faster processing
+    """
+    Decorator to rate limit API calls with optimized timing.
     
     Args:
         max_calls_per_minute: Maximum number of calls allowed per minute
@@ -39,7 +82,6 @@ def rate_limit(max_calls_per_minute: int = 60):
                 elapsed = now - last_called[func_name]
                 if elapsed < min_interval:
                     sleep_time = min_interval - elapsed
-                    logger.debug(f"Rate limiting {func_name}, sleeping for {sleep_time:.2f}s")
                     time.sleep(sleep_time)
             
             last_called[func_name] = time.time()
@@ -142,11 +184,12 @@ class YFinanceProvider(DataProvider):
         # For regular stocks, return as-is
         return symbol
     
-    @rate_limit(max_calls_per_minute=60)  # Yahoo Finance rate limiting
-    @retry_on_failure(max_retries=3, backoff_factor=1.0)
+    @cache_data(ttl_hours=1)  # Cache data for 1 hour
+    @rate_limit(max_calls_per_minute=120)  # Increased rate limit
+    @retry_on_failure(max_retries=3, backoff_factor=0.5)  # Faster backoff
     def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1h") -> pd.DataFrame:
         """
-        Get historical price data from Yahoo Finance.
+        Get historical price data from Yahoo Finance with caching and performance optimizations.
         Supports both stocks (e.g., 'AAPL') and cryptocurrencies (e.g., 'BTC/USDT', 'ETH/USD').
         
         Args:
@@ -162,11 +205,18 @@ class YFinanceProvider(DataProvider):
             normalized_symbol = self._normalize_symbol(symbol)
             
             ticker = yf.Ticker(normalized_symbol)
-            data = ticker.history(period=period, interval=interval)
+            
+            # Use faster download method for better performance
+            data = ticker.history(period=period, interval=interval, 
+                                auto_adjust=True,  # Faster processing
+                                prepost=False)     # Exclude pre/post market for speed
             
             if data.empty:
                 logger.warning(f"No data found for symbol {symbol} (normalized: {normalized_symbol})")
                 return pd.DataFrame()
+            
+            # Optimize DataFrame operations
+            data = data.dropna()  # Remove NaN values
             
             # Handle different possible column names from yfinance
             original_columns = list(data.columns)
@@ -366,28 +416,59 @@ class DataClient:
         self, 
         symbols: List[str], 
         period: str = "1y", 
-        interval: str = "1h"
+        interval: str = "1h",
+        max_workers: int = 4
     ) -> Dict[str, pd.DataFrame]:
-        """Get historical data for multiple symbols."""
+        """Get historical data for multiple symbols with parallel processing."""
         data = {}
-        for symbol in symbols:
-            logger.info(f"Fetching data for {symbol}")
-            df = self.get_historical_data(symbol, period, interval)
-            if not df.empty:
-                data[symbol] = df
-            time.sleep(0.1)  # Rate limiting
+        
+        # Use ThreadPoolExecutor for parallel data fetching
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_symbol = {
+                executor.submit(self.get_historical_data, symbol, period, interval): symbol 
+                for symbol in symbols
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_symbol):
+                symbol = future_to_symbol[future]
+                try:
+                    df = future.result()
+                    if not df.empty:
+                        data[symbol] = df
+                        logger.debug(f"Successfully fetched data for {symbol}")
+                    else:
+                        logger.warning(f"No data returned for {symbol}")
+                except Exception as e:
+                    logger.error(f"Error fetching data for {symbol}: {e}")
+        
         return data
     
     def get_realtime_data(self, symbol: str) -> Dict:
         """Get real-time price data."""
         return self.provider.get_realtime_data(symbol)
     
-    def get_realtime_multiple(self, symbols: List[str]) -> Dict[str, Dict]:
-        """Get real-time data for multiple symbols."""
+    def get_realtime_multiple(self, symbols: List[str], max_workers: int = 4) -> Dict[str, Dict]:
+        """Get real-time data for multiple symbols with parallel processing."""
         data = {}
-        for symbol in symbols:
-            quote = self.get_realtime_data(symbol)
-            if quote:
-                data[symbol] = quote
-            time.sleep(0.1)  # Rate limiting
+        
+        # Use ThreadPoolExecutor for parallel real-time data fetching
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_symbol = {
+                executor.submit(self.get_realtime_data, symbol): symbol 
+                for symbol in symbols
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_symbol):
+                symbol = future_to_symbol[future]
+                try:
+                    quote = future.result()
+                    if quote:
+                        data[symbol] = quote
+                except Exception as e:
+                    logger.error(f"Error fetching real-time data for {symbol}: {e}")
+        
         return data
