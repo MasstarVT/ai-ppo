@@ -1848,7 +1848,7 @@ def show_training():
                         st.rerun()
                 
                 # Auto-refresh option
-                auto_refresh = st.checkbox("Auto-refresh every 10 seconds", value=False)
+                auto_refresh = st.checkbox("Auto-refresh every 10 seconds", value=True)
                 if auto_refresh:
                     import time
                     time.sleep(10)
@@ -3092,7 +3092,7 @@ def show_live_trading():
     with col1:
         st.markdown("*Live market data with AI trading signals*")
     with col2:
-        auto_refresh = st.checkbox("🔄 Auto Refresh (5s)", value=False)
+        auto_refresh = st.checkbox("🔄 Auto Refresh (5s)", value=True)
     
     if auto_refresh:
         time.sleep(1)  # Simulate delay
