@@ -113,7 +113,7 @@ except ImportError as e:
         """Fallback default config when imports fail."""
         return {
             'trading': {
-                'symbols': ['AAPL', 'MSFT', 'GOOGL'],
+                'symbols': ['AAPL', 'MSFT', 'GOOGL', 'BTC/USDT', 'ETH/USDT'],
                 'timeframe': '1h',
                 'initial_balance': 10000,
                 'max_position_size': 0.1,
@@ -557,7 +557,7 @@ if 'config' not in st.session_state:
         logger.error(f"Failed to create default config: {e}")
         # Minimal fallback config
         st.session_state.config = {
-            'trading': {'symbols': ['AAPL'], 'initial_balance': 10000},
+            'trading': {'symbols': ['AAPL', 'BTC/USDT'], 'initial_balance': 10000},
             'ppo': {'learning_rate': 3e-4, 'n_steps': 2048},
             'training': {'total_timesteps': 100000}
         }
@@ -3098,12 +3098,12 @@ def show_live_trading():
         time.sleep(1)  # Simulate delay
     
     quotes_data = {
-        'Symbol': ['🍎 AAPL', '🖥️ MSFT', '🔍 GOOGL', '📦 AMZN', '⚡ TSLA'],
-        'Price': ['$178.90', '$412.45', '$2,780.15', '$185.30', '$248.90'],
-        'Change': ['+$3.40', '-$2.75', '+$29.85', '+$1.20', '-$3.10'],
-        'Change %': ['+1.94%', '-0.66%', '+1.09%', '+0.65%', '-1.23%'],
-        'Volume': ['12.5M', '8.7M', '1.2M', '15.3M', '25.1M'],
-        'AI Signal': ['🟢 BUY', '🟡 HOLD', '🟢 BUY', '🔴 SELL', '🟡 HOLD']
+        'Symbol': ['🍎 AAPL', '🖥️ MSFT', '🔍 GOOGL', '₿ BTC/USDT', '💎 ETH/USDT'],
+        'Price': ['$178.90', '$412.45', '$2,780.15', '$67,340.50', '$3,425.80'],
+        'Change': ['+$3.40', '-$2.75', '+$29.85', '+$1,250.30', '+$125.60'],
+        'Change %': ['+1.94%', '-0.66%', '+1.09%', '+1.89%', '+3.80%'],
+        'Volume': ['12.5M', '8.7M', '1.2M', '2.1B', '890M'],
+        'AI Signal': ['🟢 BUY', '🟡 HOLD', '🟢 BUY', '� BUY', '🟡 HOLD']
     }
     
     quotes_df = pd.DataFrame(quotes_data)

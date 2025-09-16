@@ -93,19 +93,64 @@ class DataProvider(ABC):
 
 
 class YFinanceProvider(DataProvider):
-    """Yahoo Finance data provider using yfinance library."""
+    """Yahoo Finance data provider using yfinance library with cryptocurrency support."""
     
     def __init__(self):
         self.name = "yfinance"
+        # Supported crypto symbols mapping from common trading pairs to yfinance format
+        self.crypto_symbols = {
+            'BTC/USD': 'BTC-USD',
+            'BTC/USDT': 'BTC-USD',  # yfinance uses BTC-USD for USDT pairs
+            'ETH/USD': 'ETH-USD',
+            'ETH/USDT': 'ETH-USD',
+            'ADA/USD': 'ADA-USD',
+            'ADA/USDT': 'ADA-USD',
+            'DOT/USD': 'DOT-USD',
+            'DOT/USDT': 'DOT-USD',
+            'LINK/USD': 'LINK-USD',
+            'LINK/USDT': 'LINK-USD',
+            'XRP/USD': 'XRP-USD',
+            'XRP/USDT': 'XRP-USD',
+            'LTC/USD': 'LTC-USD',
+            'LTC/USDT': 'LTC-USD',
+            'BCH/USD': 'BCH-USD',
+            'BCH/USDT': 'BCH-USD',
+            'MATIC/USD': 'MATIC-USD',
+            'MATIC/USDT': 'MATIC-USD',
+            'SOL/USD': 'SOL-USD',
+            'SOL/USDT': 'SOL-USD',
+            'AVAX/USD': 'AVAX-USD',
+            'AVAX/USDT': 'AVAX-USD',
+            'ATOM/USD': 'ATOM-USD',
+            'ATOM/USDT': 'ATOM-USD',
+            'DOGE/USD': 'DOGE-USD',
+            'DOGE/USDT': 'DOGE-USD'
+        }
+    
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol for yfinance (convert crypto pairs if needed)."""
+        # Check if it's a crypto pair that needs conversion
+        if symbol in self.crypto_symbols:
+            normalized = self.crypto_symbols[symbol]
+            logger.info(f"Converting crypto symbol {symbol} to {normalized}")
+            return normalized
+        
+        # Check if it's already a yfinance crypto format (e.g., BTC-USD)
+        if '-USD' in symbol:
+            return symbol
+            
+        # For regular stocks, return as-is
+        return symbol
     
     @rate_limit(max_calls_per_minute=60)  # Yahoo Finance rate limiting
     @retry_on_failure(max_retries=3, backoff_factor=1.0)
     def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1h") -> pd.DataFrame:
         """
         Get historical price data from Yahoo Finance.
+        Supports both stocks (e.g., 'AAPL') and cryptocurrencies (e.g., 'BTC/USDT', 'ETH/USD').
         
         Args:
-            symbol: Stock symbol (e.g., 'AAPL')
+            symbol: Stock symbol (e.g., 'AAPL') or crypto pair (e.g., 'BTC/USDT', 'ETH/USD')
             period: Time period ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max')
             interval: Data interval ('1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo')
         
@@ -113,11 +158,14 @@ class YFinanceProvider(DataProvider):
             DataFrame with OHLCV data
         """
         try:
-            ticker = yf.Ticker(symbol)
+            # Normalize the symbol (convert crypto pairs to yfinance format)
+            normalized_symbol = self._normalize_symbol(symbol)
+            
+            ticker = yf.Ticker(normalized_symbol)
             data = ticker.history(period=period, interval=interval)
             
             if data.empty:
-                logger.warning(f"No data found for symbol {symbol}")
+                logger.warning(f"No data found for symbol {symbol} (normalized: {normalized_symbol})")
                 return pd.DataFrame()
             
             # Handle different possible column names from yfinance
@@ -161,13 +209,16 @@ class YFinanceProvider(DataProvider):
     @rate_limit(max_calls_per_minute=60)
     @retry_on_failure(max_retries=2, backoff_factor=0.5)
     def get_realtime_data(self, symbol: str) -> Dict:
-        """Get real-time price data."""
+        """Get real-time price data for stocks and cryptocurrencies."""
         try:
-            ticker = yf.Ticker(symbol)
+            # Normalize the symbol (convert crypto pairs to yfinance format)
+            normalized_symbol = self._normalize_symbol(symbol)
+            
+            ticker = yf.Ticker(normalized_symbol)
             info = ticker.info
             
             return {
-                'symbol': symbol,
+                'symbol': symbol,  # Return original symbol for display
                 'price': info.get('regularMarketPrice', 0),
                 'change': info.get('regularMarketChange', 0),
                 'change_percent': info.get('regularMarketChangePercent', 0),
