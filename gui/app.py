@@ -199,14 +199,31 @@ st.set_page_config(
 
 def get_theme_css():
     """Get CSS styles based on current theme."""
-    # Initialize theme if not set
-    if 'theme' not in st.session_state:
-        st.session_state.theme = 'dark'
-        
     if st.session_state.theme == 'light':
         return get_light_theme_css()
     else:
         return get_dark_theme_css()
+
+def get_plotly_theme():
+    """Get plotly theme configuration based on current theme."""
+    # Ensure theme is initialized
+    if 'theme' not in st.session_state:
+        st.session_state.theme = 'dark'
+        
+    if st.session_state.theme == 'light':
+        return {
+            'paper_bgcolor': 'white',
+            'plot_bgcolor': 'white',
+            'font': {'color': '#212529'},
+            'colorway': ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#e83e8c', '#fd7e14', '#20c997']
+        }
+    else:
+        return {
+            'paper_bgcolor': '#262730',
+            'plot_bgcolor': '#262730', 
+            'font': {'color': '#ffffff'},
+            'colorway': ['#667eea', '#51cf66', '#ffd43b', '#ff6b6b', '#a78bfa', '#f472b6', '#fb923c', '#34d399']
+        }
 
 def get_dark_theme_css():
     """Get dark theme CSS styles."""
@@ -384,23 +401,210 @@ def get_light_theme_css():
     <style>
     /* Light theme variables */
     :root {
-        --bg-primary: #ffffff;
-        --bg-secondary: #f8f9fa;
-        --text-primary: #212529;
-        --text-secondary: #495057;
-        --border-color: rgba(0, 0, 0, 0.1);
-        --accent-color: #007bff;
-        --success-color: #28a745;
-        --warning-color: #ffc107;
-        --error-color: #dc3545;
-        --shadow-color: rgba(0, 0, 0, 0.1);
+        --bg-primary: #ffffff !important;
+        --bg-secondary: #f8f9fa !important;
+        --text-primary: #212529 !important;
+        --text-secondary: #495057 !important;
+        --border-color: rgba(0, 0, 0, 0.1) !important;
+        --accent-color: #007bff !important;
+        --success-color: #28a745 !important;
+        --warning-color: #ffc107 !important;
+        --error-color: #dc3545 !important;
+        --shadow-color: rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    /* Force light theme on main container and body */
+    .stApp, .main, .main > div, div[data-testid="stAppViewContainer"], body {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+    
+    /* Sidebar light theme - VERY aggressive targeting */
+    section[data-testid="stSidebar"], 
+    section[data-testid="stSidebar"] > div, 
+    section[data-testid="stSidebar"] div,
+    section[data-testid="stSidebar"] .element-container,
+    .css-1d391kg,
+    div[data-testid="stSidebar"],
+    .css-* section[data-testid="stSidebar"],
+    .st-emotion-cache-* section[data-testid="stSidebar"] {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+    }
+    
+    /* Navigation menu styling for light theme - target all possible classes */
+    .nav-link, .nav-link-selected, 
+    div[class*="nav-link"],
+    section[data-testid="stSidebar"] .element-container,
+    section[data-testid="stSidebar"] .stSelectbox,
+    section[data-testid="stSidebar"] .stButton,
+    section[data-testid="stSidebar"] button,
+    .css-* .nav-link,
+    .st-emotion-cache-* .nav-link,
+    div[role="tablist"],
+    div[role="tab"] {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+    }
+    
+    /* Force sidebar background override any default styling */
+    section[data-testid="stSidebar"] * {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+    }
+    
+    /* Navigation icons and text */
+    section[data-testid="stSidebar"] svg,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] div {
+        color: #212529 !important;
+        fill: #212529 !important;
+    }
+    
+    /* Streamlit option menu styling */
+    .nav-link, .nav-link-selected,
+    div[data-baseweb="tab-list"],
+    div[data-baseweb="tab"],
+    div[data-baseweb="tab-border"],
+    .css-* div[role="tablist"],
+    .css-* div[role="tab"] {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+    }
+    
+    /* Active/selected navigation item */
+    .nav-link-selected,
+    div[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #007bff !important;
+        color: #ffffff !important;
+    }
+    
+    /* Force all text to be dark in light theme */
+    .stApp *, .main *, div[data-testid="stAppViewContainer"] *, 
+    section[data-testid="stSidebar"] *, .css-1d391kg *,
+    h1, h2, h3, h4, h5, h6, p, span, div, label, .stMarkdown * {
+        color: #212529 !important;
+    }
+    
+    /* Streamlit components text override */
+    .element-container *, .stSelectbox *, .stTextInput *, 
+    .stButton *, .stMetric *, .stDataFrame *, 
+    div[data-testid="metric-container"] *,
+    div[data-testid="metric-container"] label,
+    div[data-testid="metric-container"] div[data-testid="metric-value"],
+    div[data-testid="metric-container"] div[data-testid="metric-delta"] {
+        color: #212529 !important;
+    }
+    
+    /* Chart text colors */
+    .js-plotly-plot .plotly .gtitle, 
+    .js-plotly-plot .plotly .xtitle,
+    .js-plotly-plot .plotly .ytitle,
+    .js-plotly-plot .plotly text,
+    .js-plotly-plot .plotly .colorbar text,
+    .js-plotly-plot .plotly .legend text,
+    .js-plotly-plot text {
+        fill: #212529 !important;
+        color: #212529 !important;
+    }
+    
+    /* Plotly chart backgrounds and text */
+    .js-plotly-plot {
+        background-color: #ffffff !important;
+    }
+    
+    .js-plotly-plot .plotly .main-svg {
+        background-color: #ffffff !important;
+    }
+    
+    /* Force chart visibility and sizing */
+    .js-plotly-plot,
+    .plotly-graph-div,
+    div[data-testid="stPlotlyChart"] {
+        background-color: #ffffff !important;
+        border: 1px solid rgba(0, 0, 0, 0.1) !important;
+        min-height: 400px !important;
+    }
+    
+    /* Chart container styling */
+    div[data-testid="stPlotlyChart"] > div {
+        background-color: #ffffff !important;
+    }
+    
+    /* Additional plotly text targeting */
+    .js-plotly-plot svg text {
+        fill: #212529 !important;
+    }
+    
+    .js-plotly-plot .plotly .colorbar-title-text,
+    .js-plotly-plot .plotly .colorbar-label-text {
+        fill: #212529 !important;
+    }
+    
+    /* Table styling for light theme */
+    div[data-testid="stDataFrame"],
+    .stDataFrame,
+    table,
+    .dataframe,
+    div[data-testid="stTable"],
+    .st-emotion-cache-* table,
+    .css-* table {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+    
+    /* Table headers and cells - more aggressive targeting */
+    table th, table td,
+    .dataframe th, .dataframe td,
+    div[data-testid="stDataFrame"] th,
+    div[data-testid="stDataFrame"] td,
+    .css-* table th,
+    .css-* table td,
+    .st-emotion-cache-* th,
+    .st-emotion-cache-* td {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+        border-color: rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    /* Table header specific styling - very aggressive */
+    table thead th,
+    .dataframe thead th,
+    div[data-testid="stDataFrame"] thead th,
+    .css-* table thead th,
+    .st-emotion-cache-* thead th,
+    tbody tr:first-child th,
+    tr:first-child th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    /* Table rows */
+    table tbody tr,
+    .dataframe tbody tr,
+    .css-* table tbody tr {
+        background-color: #ffffff !important;
+    }
+    
+    /* Table row hover */
+    table tbody tr:hover,
+    .dataframe tbody tr:hover {
+        background-color: #f8f9fa !important;
+    }
+    
+    /* Navigation menu text */
+    .nav-link, .nav-link-selected {
+        color: #212529 !important;
     }
     
     /* Main container */
     .main > div {
-        padding-top: 2rem;
-        background-color: var(--bg-primary);
-        color: var(--text-primary);
+        padding-top: 2rem !important;
+        background-color: var(--bg-primary) !important;
+        color: var(--text-primary) !important;
     }
     
     /* Enhanced metrics styling */
@@ -571,14 +775,7 @@ if 'training_active' not in st.session_state:
 if 'training_metrics' not in st.session_state:
     st.session_state.training_metrics = []
 
-def get_theme_css():
-    """Get CSS styles based on current theme."""
-    if st.session_state.theme == 'light':
-        return get_light_theme_css()
-    else:
-        return get_dark_theme_css()
-
-def get_dark_theme_css():
+def main():
     """Get dark theme CSS styles."""
     return """
     <style>
@@ -748,178 +945,10 @@ def get_dark_theme_css():
     </style>
     """
 
-def get_light_theme_css():
-    """Get light theme CSS styles."""
-    return """
-    <style>
-    /* Light theme variables */
-    :root {
-        --bg-primary: #ffffff;
-        --bg-secondary: #f8f9fa;
-        --text-primary: #212529;
-        --text-secondary: #495057;
-        --border-color: rgba(0, 0, 0, 0.1);
-        --accent-color: #007bff;
-        --success-color: #28a745;
-        --warning-color: #ffc107;
-        --error-color: #dc3545;
-        --shadow-color: rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Main container */
-    .main > div {
-        padding-top: 2rem;
-        background-color: var(--bg-primary);
-        color: var(--text-primary);
-    }
-    
-    /* Enhanced metrics styling */
-    div[data-testid="metric-container"] {
-        background-color: var(--bg-secondary) !important;
-        border: 2px solid var(--border-color) !important;
-        padding: 1.5rem !important;
-        border-radius: 12px !important;
-        margin: 0.5rem 0 !important;
-        box-shadow: 0 4px 12px var(--shadow-color) !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    div[data-testid="metric-container"]:hover {
-        transform: translateY(-3px) !important;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
-        border-color: var(--accent-color) !important;
-    }
-    
-    /* Metric labels */
-    div[data-testid="metric-container"] label {
-        font-size: 1rem !important;
-        font-weight: 600 !important;
-        color: var(--text-secondary) !important;
-        margin-bottom: 0.5rem !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
-    }
-    
-    /* Metric values */
-    div[data-testid="metric-container"] div[data-testid="metric-value"] {
-        font-size: 2rem !important;
-        font-weight: 700 !important;
-        color: var(--text-primary) !important;
-        line-height: 1.2 !important;
-    }
-    
-    /* Metric deltas */
-    div[data-testid="metric-container"] div[data-testid="metric-delta"] {
-        font-size: 1.1rem !important;
-        font-weight: 600 !important;
-        margin-top: 0.4rem !important;
-    }
-    
-    /* Portfolio Overview container */
-    .portfolio-overview {
-        background: var(--bg-secondary);
-        border-radius: 15px;
-        padding: 2rem;
-        margin: 1.5rem 0;
-        border: 2px solid var(--border-color);
-        box-shadow: 0 8px 32px var(--shadow-color);
-    }
-    
-    /* Status boxes - light theme versions */
-    .success-box {
-        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-        border: 2px solid var(--success-color);
-        color: #155724;
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
-        font-weight: 500;
-    }
-    
-    .warning-box {
-        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-        border: 2px solid var(--warning-color);
-        color: #856404;
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.15);
-        font-weight: 500;
-    }
-    
-    .error-box {
-        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-        border: 2px solid var(--error-color);
-        color: #721c24;
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.15);
-        font-weight: 500;
-    }
-    
-    .info-box {
-        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
-        border: 2px solid #17a2b8;
-        color: #0c5460;
-        padding: 1.2rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(23, 162, 184, 0.15);
-        font-weight: 500;
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        border-radius: 25px !important;
-        border: none !important;
-        background: linear-gradient(135deg, var(--accent-color) 0%, #6c5ce7 100%) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        padding: 0.7rem 2rem !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px var(--shadow-color) !important;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.2) !important;
-        background: linear-gradient(135deg, #6c5ce7 0%, var(--accent-color) 100%) !important;
-    }
-    
-    /* Sidebar improvements */
-    .css-1d391kg {
-        background-color: var(--bg-secondary) !important;
-    }
-    
-    /* Chart container improvements */
-    .js-plotly-plot {
-        border-radius: 12px !important;
-        overflow: hidden !important;
-        box-shadow: 0 6px 20px var(--shadow-color) !important;
-        border: 2px solid var(--border-color) !important;
-    }
-    
-    /* Theme toggle button */
-    .theme-toggle {
-        position: fixed;
-        top: 1rem;
-        right: 1rem;
-        z-index: 999;
-        background: var(--bg-secondary);
-        border: 2px solid var(--border-color);
-        border-radius: 50px;
-        padding: 0.5rem 1rem;
-        box-shadow: 0 4px 12px var(--shadow-color);
-    }
-    </style>
-    """
-
 def main():
     """Main application function."""
     
-    # Apply theme CSS (must be done in main after theme initialization)
+    # Apply theme CSS immediately at start
     st.markdown(get_theme_css(), unsafe_allow_html=True)
     
     # Check system status first
@@ -934,7 +963,7 @@ def main():
         st.divider()
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.write("**Theme:**")
+            st.write(f"**Theme:** {st.session_state.theme.title()}")
         with col2:
             # Show current theme and toggle icon
             current_icon = '🌞' if st.session_state.theme == 'dark' else '🌙'
@@ -1019,6 +1048,9 @@ def show_dashboard():
     """Show main dashboard."""
     st.title("📈 AI PPO Trading System Dashboard")
     
+    # Debug info
+    st.write(f"🔍 Current theme: {st.session_state.get('theme', 'not set')}")
+    
     # Key metrics row
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1060,58 +1092,49 @@ def show_dashboard():
     with col1:
         st.subheader("Portfolio Performance")
         
-        # Create sample portfolio performance chart
-        dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='D')
-        np.random.seed(42)
-        returns = np.random.normal(0.001, 0.02, len(dates))
-        portfolio_values = 10000 * (1 + returns).cumprod()
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=dates,
-            y=portfolio_values,
-            mode='lines',
-            name='Portfolio Value',
-            line=dict(color='#1f77b4', width=2)
-        ))
-        
-        fig.update_layout(
-            title="Portfolio Value Over Time",
-            xaxis_title="Date",
-            yaxis_title="Value ($)",
-            height=400
-        )
-        
-        st.plotly_chart(fig, width="stretch")
+        try:
+            # Create simple sample data
+            import datetime
+            dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
+            np.random.seed(42)
+            values = np.cumsum(np.random.normal(0, 20, 100)) + 10000
+            
+            # Create basic line chart
+            chart_data = pd.DataFrame({
+                'Date': dates,
+                'Portfolio Value': values
+            })
+            
+            # Use Streamlit's native line chart as fallback
+            st.line_chart(chart_data.set_index('Date'))
+            
+        except Exception as e:
+            st.error(f"Chart error: {e}")
+            # Fallback to simple text
+            st.info("📈 Portfolio growing steadily over time")
+            st.write("Current Value: $10,000 (+5.2%)")
     
     with col2:
         st.subheader("Monthly Returns")
         
-        # Create sample monthly returns heatmap
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        years = ['2023', '2024']
-        
-        # Generate sample data
-        np.random.seed(42)
-        returns_data = np.random.normal(0.02, 0.05, (len(years), len(months)))
-        
-        fig = go.Figure(data=go.Heatmap(
-            z=returns_data,
-            x=months,
-            y=years,
-            colorscale='RdYlGn',
-            text=[[f"{val:.1%}" for val in row] for row in returns_data],
-            texttemplate="%{text}",
-            textfont={"size": 10}
-        ))
-        
-        fig.update_layout(
-            title="Monthly Returns Heatmap",
-            height=400
-        )
-        
-        st.plotly_chart(fig, width="stretch")
+        try:
+            # Create simple heatmap data
+            months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
+            returns_data = {
+                '2023': [0.02, -0.01, 0.03, 0.01, 0.04, -0.02],
+                '2024': [0.01, 0.03, -0.01, 0.02, 0.01, 0.03]
+            }
+            
+            df = pd.DataFrame(returns_data, index=months)
+            
+            # Use simple dataframe display
+            st.dataframe(df.style.format("{:.1%}").background_gradient(cmap='RdYlGn', axis=None))
+            
+        except Exception as e:
+            st.error(f"Heatmap error: {e}")
+            # Fallback
+            st.info("📊 Monthly returns showing positive trend")
+            st.write("Average monthly return: +1.5%")
     
     # Recent activity
     st.subheader("Recent Activity")
@@ -1467,7 +1490,8 @@ def show_data_analysis():
                 title=f"{selected_symbol} Price Movement",
                 xaxis_title="Date",
                 yaxis_title="Price ($)",
-                height=400
+                height=400,
+                **get_plotly_theme()
             )
             
             st.plotly_chart(fig, width="stretch")
@@ -2895,7 +2919,8 @@ def show_backtesting():
                 height=600,
                 legend=dict(x=0, y=1),
                 hovermode='closest',
-                showlegend=True
+                showlegend=True,
+                **get_plotly_theme()
             )
             
             st.plotly_chart(fig, width="stretch")
