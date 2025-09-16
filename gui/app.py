@@ -546,8 +546,7 @@ def get_light_theme_css():
     </style>
     """
 
-# Custom CSS with theme support
-st.markdown(get_theme_css(), unsafe_allow_html=True)
+# CSS will be applied in main() after theme initialization
 
 # Initialize session state
 if 'config' not in st.session_state:
@@ -920,6 +919,9 @@ def get_light_theme_css():
 def main():
     """Main application function."""
     
+    # Apply theme CSS (must be done in main after theme initialization)
+    st.markdown(get_theme_css(), unsafe_allow_html=True)
+    
     # Check system status first
     if not show_system_status():
         return
@@ -934,7 +936,10 @@ def main():
         with col1:
             st.write("**Theme:**")
         with col2:
-            if st.button(f"{'🌞' if st.session_state.theme == 'dark' else '🌙'}"):
+            # Show current theme and toggle icon
+            current_icon = '🌞' if st.session_state.theme == 'dark' else '🌙'
+            button_text = f"{current_icon}"
+            if st.button(button_text, help=f"Switch to {'Light' if st.session_state.theme == 'dark' else 'Dark'} theme"):
                 st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
                 st.rerun()
         
