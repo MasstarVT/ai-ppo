@@ -1140,8 +1140,9 @@ def show_configuration():
         with col1:
             symbols = st.text_area(
                 "Trading Symbols (one per line)",
-                value="\n".join(st.session_state.config.get('trading', {}).get('symbols', ['AAPL'])),
-                height=100
+                value="\n".join(st.session_state.config.get('trading', {}).get('symbols', ['AAPL', 'BTC/USDT'])),
+                height=100,
+                help="Supports stocks (AAPL, MSFT) and crypto pairs (BTC/USDT, ETH/USDT, ADA/USDT, etc.)"
             )
             
             initial_balance = st.number_input(
