@@ -1885,7 +1885,7 @@ def show_training():
                     st.metric("Status", "🔄 Training Active")
                 
                 with col2:
-                    # Calculate estimated progress (simplified)
+                    # Calculate elapsed time
                     import time
                     elapsed = 0  # Initialize elapsed time
                     if hasattr(st.session_state, 'training_start_time'):
@@ -1896,17 +1896,66 @@ def show_training():
                         st.metric("Elapsed Time", "Starting...")
                 
                 with col3:
-                    # Show estimated progress
-                    config_timesteps = st.session_state.get('training_config', {}).get('timesteps', 100000)
-                    if elapsed > 60:  # After 1 minute, estimate progress
-                        estimated_progress = min(95, (elapsed / 3600) * 20)  # Rough estimate
-                        st.metric("Estimated Progress", f"{estimated_progress:.1f}%")
+                    # Try to read progress from training log file
+                    actual_progress = None
+                    debug_info = ""
+                    try:
+                        log_file = os.path.join(os.path.dirname(__file__), '..', 'logs', 'training_debug.log')
+                        if os.path.exists(log_file):
+                            with open(log_file, 'r') as f:
+                                lines = f.readlines()
+                                
+                            # Get training start time for this session
+                            training_start = getattr(st.session_state, 'training_start_time', time.time())
+                            
+                            # Look for progress lines after training started
+                            progress_lines = []
+                            for line in reversed(lines[-100:]):  # Check last 100 lines
+                                if 'Step' in line and '%' in line and ')' in line:
+                                    # Parse timestamp from log line
+                                    import re
+                                    timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
+                                    if timestamp_match:
+                                        from datetime import datetime
+                                        log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
+                                        log_timestamp = log_time.timestamp()
+                                        
+                                        # Only consider logs from current training session
+                                        if log_timestamp >= training_start - 30:  # 30 second buffer
+                                            step_match = re.search(r'Step\s+(\d+)/(\d+)\s+\(\s*(\d+\.?\d*)%\)', line)
+                                            if step_match:
+                                                current_step = int(step_match.group(1))
+                                                total_steps = int(step_match.group(2))
+                                                progress_pct = float(step_match.group(3))
+                                                progress_lines.append((current_step, total_steps, progress_pct, log_timestamp))
+                                        
+                            # Get the most recent progress from current session
+                            if progress_lines:
+                                # Sort by timestamp and get the latest
+                                progress_lines.sort(key=lambda x: x[3], reverse=True)
+                                current_step, total_steps, progress_pct, _ = progress_lines[0]
+                                actual_progress = progress_pct
+                                debug_info = f"Step {current_step}/{total_steps}"
+                                    
+                    except Exception as e:
+                        debug_info = f"Parse error"
+                    
+                    # Show actual progress if available, otherwise use time estimation
+                    if actual_progress is not None and actual_progress > 0:
+                        st.metric("Training Progress", f"{actual_progress:.1f}%", delta=debug_info)
+                        progress = actual_progress
                     else:
-                        st.metric("Estimated Progress", "Calculating...")
+                        # Fallback to time-based estimation
+                        if elapsed > 60:  # After 1 minute, estimate progress
+                            estimated_progress = min(95, (elapsed / 3600) * 20)  # Rough estimate
+                            st.metric("Training Progress", f"~{estimated_progress:.1f}%", delta="Time estimate")
+                            progress = estimated_progress
+                        else:
+                            st.metric("Training Progress", "Starting...", delta="Initializing")
+                            progress = 0
                 
                 # Progress bar
-                progress = min(95, (elapsed / 3600) * 20) if elapsed > 60 else 0
-                st.progress(progress / 100.0)
+                st.progress(min(progress / 100.0, 0.99))  # Cap at 99% to show it's still running
                 
                 # Control buttons
                 col1, col2, col3 = st.columns([1, 1, 2])

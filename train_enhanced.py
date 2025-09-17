@@ -13,15 +13,22 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-# Set up optimized logging
-logging.basicConfig(
-    level=logging.INFO,  # Changed from DEBUG to INFO for performance
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+# Completely disable logging to prevent buffer detachment issues
+log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+
+# Disable all logging globally to prevent any buffer issues
+logging.disable(logging.CRITICAL)
+
+# Create a dummy logger that does nothing
+class DummyLogger:
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+    def debug(self, msg): pass
+
+logger = DummyLogger()
+print("🔇 All logging disabled to prevent buffer issues")
 
 print("=== Enhanced Training Script Starting...")
 
@@ -353,7 +360,16 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
                 # Progress reporting
                 if timestep % 100 == 0:
                     progress = (timestep / additional_timesteps) * 100
-                    print(f"  Step {timestep:6d}/{additional_timesteps} ({progress:5.1f}%)")
+                    progress_msg = f"  Step {timestep:6d}/{additional_timesteps} ({progress:5.1f}%)"
+                    print(progress_msg)
+                    # Write progress to file directly to avoid logging buffer issues
+                    try:
+                        log_path = os.path.join(os.path.dirname(__file__), 'logs', 'training_debug.log')
+                        with open(log_path, 'a', encoding='utf-8') as f:
+                            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - {progress_msg}\n")
+                            f.flush()
+                    except Exception:
+                        pass  # Ignore file writing errors to prevent training interruption
             
             # Finish episode
             agent.finish_episode(obs)
@@ -548,7 +564,16 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
                 # Progress reporting
                 if timestep % 100 == 0:
                     progress = (timestep / timesteps) * 100
-                    print(f"  Step {timestep:6d}/{timesteps} ({progress:5.1f}%)")
+                    progress_msg = f"  Step {timestep:6d}/{timesteps} ({progress:5.1f}%)"
+                    print(progress_msg)
+                    # Write progress to file directly to avoid logging buffer issues
+                    try:
+                        log_path = os.path.join(os.path.dirname(__file__), 'logs', 'training_debug.log')
+                        with open(log_path, 'a', encoding='utf-8') as f:
+                            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - {progress_msg}\n")
+                            f.flush()
+                    except Exception:
+                        pass  # Ignore file writing errors to prevent training interruption
                     
                 # Force update near the end to prevent getting stuck
                 if timestep >= timesteps * 0.95 and agent.buffer.ptr > 0:
