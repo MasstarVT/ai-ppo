@@ -26,31 +26,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Only show essential startup messages
-print("� Starting AI PPO Trading GUI...")
-logger.info("GUI Application Starting")
+# Global flags to prevent repeated initialization messages
+_GUI_ALREADY_INITIALIZED = False
+_YAML_LOGGED = False
+_COMPONENTS_LOADING_LOGGED = False
+_CORE_COMPONENTS_LOGGED = False
+_TRAINING_MANAGER_LOGGED = False
 
-# Add src to path
+# Check if this is the first run of the session using a file marker
+GUI_SESSION_FILE = os.path.join(os.path.dirname(__file__), '.gui_session_active')
+
+def is_first_gui_run():
+    """Check if this is the first GUI run in this session"""
+    if 'gui_session_started' not in st.session_state:
+        # Create session marker file
+        with open(GUI_SESSION_FILE, 'w') as f:
+            f.write(str(time.time()))
+        st.session_state.gui_session_started = True
+        return True
+    return False
+
+# Only show essential startup messages on first run per session
+if is_first_gui_run():
+    print("📊 Starting AI PPO Trading GUI...")
+    logger.info("GUI Application Starting")
+
+# Add src to path and import external dependencies
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
+_SYSTEM_READY_LOGGED = False
+
 # Import trading system components
 SYSTEM_READY = False
 IMPORT_ERROR = None
 
-# Test yaml import first
+# Test yaml import first (only show message on first run)
 try:
     import yaml
-    print("✅ YAML imported")
+    if not _YAML_LOGGED and 'yaml_imported_logged' not in st.session_state:
+        print("✅ YAML imported")
+        st.session_state.yaml_imported_logged = True
+        _YAML_LOGGED = True
 except ImportError as e:
     print(f"❌ YAML import failed: {e}")
     st.error(f"❌ YAML import failed: {e}")
     st.info("💡 Please install PyYAML: `pip install PyYAML`")
     IMPORT_ERROR = f"YAML import error: {e}"
 
-print("🔄 Loading components...")
+# Load components (only show message on first run)
+if 'components_loading_logged' not in st.session_state:
+    print("🔄 Loading components...")
+    st.session_state.components_loading_logged = True
 
 try:
     from data import DataClient, prepare_features
@@ -59,29 +88,37 @@ try:
     from evaluation.backtesting import Backtester
     from utils import ConfigManager, create_default_config, format_currency, format_percentage
     
-    print("✅ Core components loaded")
+    if 'core_components_logged' not in st.session_state:
+        print("✅ Core components loaded")
+        st.session_state.core_components_logged = True
     
     # Try to import training manager (requires torch/numpy)
     try:
         from utils import training_manager, BackgroundTrainingManager, NetworkAnalyzer
         TRAINING_MANAGER_AVAILABLE = True
-        st.success("✅ Background training manager available")
+        if 'training_manager_logged' not in st.session_state:
+            print("✅ Background training manager available")
+            st.session_state.training_manager_logged = True
     except ImportError:
         TRAINING_MANAGER_AVAILABLE = False
-        st.info("ℹ️ Background training manager not available (requires torch/numpy)")
+        if 'training_manager_warning_logged' not in st.session_state:
+            print("ℹ️ Background training manager not available (requires torch/numpy)")
+            st.session_state.training_manager_warning_logged = True
     
     # Test basic functionality
     _test_config = create_default_config()
     SYSTEM_READY = True
-    st.success("✅ All trading system components imported successfully")
-    
+    if 'all_components_logged' not in st.session_state:
+        print("✅ All trading system components imported successfully")
+        st.session_state.all_components_logged = True
+
 except ImportError as e:
     SYSTEM_READY = False
     IMPORT_ERROR = f"Import error: {e}"
-    st.error(f"⚠️ Error importing trading system components: {e}")
-    st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
-    
-    # Show detailed error information
+    if 'import_error_logged' not in st.session_state:
+        st.error(f"⚠️ Error importing trading system components: {e}")
+        st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
+        st.session_state.import_error_logged = True    # Show detailed error information
     with st.expander("🔍 Detailed Error Information"):
         st.code(f"Error: {e}")
         st.code(f"Python Path: {sys.path}")
@@ -1819,6 +1856,17 @@ def show_training():
             index=3,
             help="Historical data period for training"
         )
+        
+        # Performance configuration
+        st.markdown("**⚡ Performance Settings**")
+        num_threads = st.number_input(
+            "Number of CPU Threads",
+            value=4,
+            min_value=1,
+            max_value=16,
+            step=1,
+            help="Number of CPU threads to use for training. More threads can improve training speed but may use more system resources."
+        )
     
     # Training Progress Monitor (if training is active)
     if st.session_state.training_active:
@@ -1869,6 +1917,9 @@ def show_training():
                             process.terminate()
                             st.session_state.training_active = False
                             st.success("Training stopped successfully")
+                            print(f"\n{'='*60}")
+                            print("⏹️ TRAINING STOPPED BY USER")
+                            print(f"{'='*60}\n")
                             st.rerun()
                         except:
                             st.error("Could not stop training process")
@@ -1876,6 +1927,9 @@ def show_training():
                 with col2:
                     if st.button("📊 Refresh Status", type="secondary"):
                         st.rerun()
+                
+                # Console output information
+                st.info("📺 **Real-time training logs are displayed in the console/terminal where you started the GUI.** Check your terminal window to see detailed training progress!")
                 
                 # Auto-refresh option
                 auto_refresh = st.checkbox("Auto-refresh every 10 seconds", value=True)
@@ -1889,28 +1943,18 @@ def show_training():
                 st.session_state.training_active = False
                 if process.returncode == 0:
                     st.success("🎉 Training completed successfully!")
+                    print(f"\n{'='*60}")
+                    print("🎉 TRAINING COMPLETED SUCCESSFULLY!")
+                    print(f"{'='*60}\n")
                 else:
                     st.error(f"❌ Training failed or was interrupted (Exit code: {process.returncode})")
-                    
-                    # Try to get error output from process
-                    try:
-                        if process.stderr:
-                            stderr_output = process.stderr.read()
-                            if stderr_output:
-                                st.error("**Error details:**")
-                                st.code(stderr_output, language="text")
-                    except:
-                        pass
-                    
-                    # Try to get stdout for debugging
-                    try:
-                        if process.stdout:
-                            stdout_output = process.stdout.read()
-                            if stdout_output:
-                                with st.expander("📋 Training Output (Debug)"):
-                                    st.code(stdout_output, language="text")
-                    except:
-                        pass
+                    print(f"\n{'='*60}")
+                    print(f"❌ TRAINING FAILED! Exit code: {process.returncode}")
+                    print(f"{'='*60}\n")
+                
+                # Remove the finished process
+                if hasattr(st.session_state, 'training_process'):
+                    delattr(st.session_state, 'training_process')
                 
                 # Show completion message
                 st.info("💡 Check the Models tab to see your newly trained model")
@@ -2054,6 +2098,38 @@ def show_training():
             st.write("• Output: Single value estimate")
             st.write("• Architecture: Dense → LayerNorm → Dense → Linear")
     
+    # Current Training Configuration Display
+    if st.session_state.training_active:
+        st.subheader("📊 Current Training Configuration")
+        
+        config = st.session_state.get('training_config', {})
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("🧵 CPU Threads", config.get('num_threads', 'N/A'))
+            st.metric("🎯 Training Mode", config.get('mode', 'N/A').replace('🆕 Train New Model', 'New').replace('🔄 Continue Existing Model', 'Continue').replace('♾️ Continuous Training', 'Continuous'))
+        
+        with col2:
+            st.metric("⏱️ Timesteps", f"{config.get('timesteps', 'N/A'):,}" if isinstance(config.get('timesteps'), int) else config.get('timesteps', 'N/A'))
+            st.metric("📈 Symbols", len(config.get('symbols', [])))
+        
+        with col3:
+            st.metric("🔄 Eval Frequency", f"{config.get('eval_freq', 'N/A'):,}" if isinstance(config.get('eval_freq'), int) else config.get('eval_freq', 'N/A'))
+            st.metric("💾 Save Frequency", f"{config.get('save_freq', 'N/A'):,}" if isinstance(config.get('save_freq'), int) else config.get('save_freq', 'N/A'))
+        
+        with col4:
+            st.metric("📅 Data Period", config.get('data_period', 'N/A'))
+            
+            # Show symbols list if available
+            if config.get('symbols'):
+                symbols_text = ', '.join(config.get('symbols', []))
+                if len(symbols_text) > 20:
+                    symbols_text = symbols_text[:17] + "..."
+                st.metric("📊 Trading Symbols", symbols_text)
+        
+        st.divider()
+
     # Enhanced Training controls
     st.subheader("🎮 Training Controls")
     
@@ -2105,6 +2181,26 @@ def show_training():
                 if training_mode == "🔄 Continue Existing Model":
                     model_path = os.path.join(model_dir, selected_model)
                     
+                    # Create temporary config file with thread settings
+                    temp_config_data = {
+                        'performance': {
+                            'num_threads': num_threads,
+                            'compile_model': False,
+                            'use_mixed_precision': False,
+                            'pin_memory': False,
+                            'non_blocking': False
+                        }
+                    }
+                    
+                    temp_config_path = os.path.join(project_root, "temp_gui_config.yaml")
+                    try:
+                        import yaml
+                        with open(temp_config_path, 'w') as f:
+                            yaml.dump(temp_config_data, f)
+                    except Exception as e:
+                        st.warning(f"Could not create temp config: {e}. Using default settings.")
+                        temp_config_path = None
+                    
                     # Create command for continuing training
                     cmd = [
                         sys.executable, 
@@ -2114,6 +2210,10 @@ def show_training():
                         "--timesteps", str(additional_timesteps)
                     ]
                     
+                    # Add config file if created successfully
+                    if temp_config_path and os.path.exists(temp_config_path):
+                        cmd.extend(["--config", temp_config_path])
+                    
                     # Add model name if provided
                     if model_name:
                         cmd.extend(["--model-name", model_name])
@@ -2121,12 +2221,23 @@ def show_training():
                     # Store command for debugging
                     st.session_state.last_training_command = cmd
                     
+                    # Initialize console output storage
+                    if 'console_output' not in st.session_state:
+                        st.session_state.console_output = []
+                    st.session_state.console_output.clear()
+                    
+                    # Start training in background with real-time console output
+                    print(f"\n{'='*60}")
+                    print("🔄 CONTINUING TRAINING - Real-time console output:")
+                    print(f"Command: {' '.join(cmd)}")
+                    print(f"{'='*60}")
+                    
                     # Start training in background
                     st.session_state.training_process = subprocess.Popen(
                         cmd,
                         cwd=project_root,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        stdout=None,  # Let output go to console
+                        stderr=None,  # Let errors go to console
                         text=True
                     )
                     
@@ -2136,6 +2247,26 @@ def show_training():
                     st.info(f"📊 Adding {additional_timesteps:,} more training steps")
                     
                 elif training_mode == "♾️ Continuous Training":
+                    # Create temporary config file with thread settings
+                    temp_config_data = {
+                        'performance': {
+                            'num_threads': num_threads,
+                            'compile_model': False,
+                            'use_mixed_precision': False,
+                            'pin_memory': False,
+                            'non_blocking': False
+                        }
+                    }
+                    
+                    temp_config_path = os.path.join(project_root, "temp_gui_config.yaml")
+                    try:
+                        import yaml
+                        with open(temp_config_path, 'w') as f:
+                            yaml.dump(temp_config_data, f)
+                    except Exception as e:
+                        st.warning(f"Could not create temp config: {e}. Using default settings.")
+                        temp_config_path = None
+                    
                     # Create command for continuous training
                     cmd = [
                         sys.executable,
@@ -2144,6 +2275,10 @@ def show_training():
                         "--save-interval", str(save_interval),
                         "--checkpoint-interval", str(checkpoint_interval)
                     ]
+                    
+                    # Add config file if created successfully
+                    if temp_config_path and os.path.exists(temp_config_path):
+                        cmd.extend(["--config", temp_config_path])
                     
                     # Add model path if starting from existing model
                     if continuous_start_mode == "📂 Existing Model" and selected_model:
@@ -2157,12 +2292,23 @@ def show_training():
                     # Store command for debugging
                     st.session_state.last_training_command = cmd
                     
+                    # Initialize console output storage
+                    if 'console_output' not in st.session_state:
+                        st.session_state.console_output = []
+                    st.session_state.console_output.clear()
+                    
+                    # Start training in background with real-time console output
+                    print(f"\n{'='*60}")
+                    print("♾️ STARTING CONTINUOUS TRAINING - Real-time console output:")
+                    print(f"Command: {' '.join(cmd)}")
+                    print(f"{'='*60}")
+                    
                     # Start training in background
                     st.session_state.training_process = subprocess.Popen(
                         cmd,
                         cwd=project_root,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        stdout=None,  # Let output go to console
+                        stderr=None,  # Let errors go to console
                         text=True
                     )
                     
@@ -2189,6 +2335,26 @@ def show_training():
                     """)
                     
                 else:
+                    # Create temporary config file with thread settings
+                    temp_config_data = {
+                        'performance': {
+                            'num_threads': num_threads,
+                            'compile_model': False,
+                            'use_mixed_precision': False,
+                            'pin_memory': False,
+                            'non_blocking': False
+                        }
+                    }
+                    
+                    temp_config_path = os.path.join(project_root, "temp_gui_config.yaml")
+                    try:
+                        import yaml
+                        with open(temp_config_path, 'w') as f:
+                            yaml.dump(temp_config_data, f)
+                    except Exception as e:
+                        st.warning(f"Could not create temp config: {e}. Using default settings.")
+                        temp_config_path = None
+                    
                     # Create command for new training
                     cmd = [
                         sys.executable,
@@ -2197,6 +2363,10 @@ def show_training():
                         "--timesteps", str(additional_timesteps)
                     ]
                     
+                    # Add config file if created successfully
+                    if temp_config_path and os.path.exists(temp_config_path):
+                        cmd.extend(["--config", temp_config_path])
+                    
                     # Add model name if provided
                     if model_name:
                         cmd.extend(["--model-name", model_name])
@@ -2204,12 +2374,23 @@ def show_training():
                     # Store command for debugging
                     st.session_state.last_training_command = cmd
                     
+                    # Initialize console output storage
+                    if 'console_output' not in st.session_state:
+                        st.session_state.console_output = []
+                    st.session_state.console_output.clear()
+                    
+                    # Start training in background with real-time console output
+                    print(f"\n{'='*60}")
+                    print("🚀 STARTING NEW TRAINING - Real-time console output:")
+                    print(f"Command: {' '.join(cmd)}")
+                    print(f"{'='*60}")
+                    
                     # Start training in background
                     st.session_state.training_process = subprocess.Popen(
                         cmd,
                         cwd=project_root,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        stdout=None,  # Let output go to console
+                        stderr=None,  # Let errors go to console
                         text=True
                     )
                     
@@ -2218,6 +2399,14 @@ def show_training():
                     st.info(f"📊 Training for {additional_timesteps:,} timesteps")
                 
                 st.session_state.training_active = True
+                st.session_state.training_start_time = time.time()
+                
+                # Inform user about console output
+                st.info("📺 **Training logs will appear in the console/terminal where you started this GUI.** Switch to your terminal window to see real-time training progress!")
+                
+                # Show what command is being run for debugging
+                with st.expander("🔍 Debug: Command Being Executed"):
+                    st.code(' '.join(st.session_state.last_training_command), language='bash')
                 
                 # Store training config
                 st.session_state.training_config = {
@@ -2226,7 +2415,8 @@ def show_training():
                     'eval_freq': eval_freq,
                     'save_freq': save_freq,
                     'symbols': [s.strip() for s in data_symbols.split('\n') if s.strip()],
-                    'data_period': data_period
+                    'data_period': data_period,
+                    'num_threads': num_threads
                 }
                 
                 st.rerun()

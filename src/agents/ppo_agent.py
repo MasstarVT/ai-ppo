@@ -6,7 +6,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+import os
 from typing import Dict, List, Tuple, Optional
 import logging
 from collections import deque
@@ -262,17 +264,25 @@ class PPOAgent:
         self.pin_memory = performance_config.get('pin_memory', True)
         self.non_blocking = performance_config.get('non_blocking', True)
         
+        # Device optimization - define device first
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
         # Set number of threads for CPU operations
         torch.set_num_threads(self.num_threads)
+        torch.set_num_interop_threads(self.num_threads)
+        
+        # Additional CPU optimization settings
+        if self.device.type == 'cpu':
+            # Optimize for CPU performance
+            os.environ['OMP_NUM_THREADS'] = str(self.num_threads)
+            os.environ['MKL_NUM_THREADS'] = str(self.num_threads)
+            os.environ['NUMEXPR_NUM_THREADS'] = str(self.num_threads)
         
         # Network architecture
         network_config = config.get('network', {})
         policy_layers = network_config.get('policy_layers', [256, 256])
         value_layers = network_config.get('value_layers', [256, 256])
         activation = network_config.get('activation', 'relu')  # Default to faster ReLU
-        
-        # Device optimization
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Enhanced GPU logging and optimization
         if torch.cuda.is_available():
@@ -599,6 +609,128 @@ class PPOAgent:
         self.training_stats['kl_divergence'].append(avg_kl)
         
         # Clear GPU cache periodically to prevent memory buildup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        return {
+            'policy_loss': avg_policy_loss,
+            'value_loss': avg_value_loss,
+            'entropy': avg_entropy,
+            'kl_divergence': avg_kl
+        }
+    
+    def update_optimized(self) -> Dict[str, float]:
+        """Optimized update with DataLoader and parallel processing."""
+        data = self.buffer.get()
+        
+        # Move to device with optimized transfer settings
+        pin_memory = self.pin_memory and torch.cuda.is_available()
+        for key in data:
+            if pin_memory:
+                data[key] = data[key].pin_memory()
+            data[key] = data[key].to(self.device, non_blocking=self.non_blocking)
+        
+        # Create TensorDataset for efficient batch loading
+        dataset = TensorDataset(
+            data['observations'], 
+            data['actions'], 
+            data['returns'], 
+            data['advantages'], 
+            data['log_probs']
+        )
+        
+        # Use DataLoader with multiple workers for efficient batching
+        # On Windows, use fewer workers to avoid potential issues
+        num_workers = min(4, max(1, self.num_threads // 2)) if os.name == 'nt' else min(8, self.num_threads)
+        
+        # Adjust batch size for larger datasets to maximize efficiency
+        effective_batch_size = min(self.batch_size, len(dataset) // max(1, self.n_epochs))
+        
+        dataloader = DataLoader(
+            dataset, 
+            batch_size=effective_batch_size, 
+            shuffle=True, 
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=True,  # Ensure consistent batch sizes
+            persistent_workers=num_workers > 0  # Keep workers alive between epochs
+        )
+        
+        # Training loop with mixed precision support
+        total_policy_loss = 0
+        total_value_loss = 0
+        total_entropy = 0
+        total_kl = 0
+        num_updates = 0
+        
+        for epoch in range(self.n_epochs):
+            for batch_data in dataloader:
+                batch_obs, batch_actions, batch_returns, batch_advantages, batch_old_log_probs = batch_data
+                
+                # Move batch to device if not already there
+                if not pin_memory:
+                    batch_obs = batch_obs.to(self.device, non_blocking=self.non_blocking)
+                    batch_actions = batch_actions.to(self.device, non_blocking=self.non_blocking)
+                    batch_returns = batch_returns.to(self.device, non_blocking=self.non_blocking)
+                    batch_advantages = batch_advantages.to(self.device, non_blocking=self.non_blocking)
+                    batch_old_log_probs = batch_old_log_probs.to(self.device, non_blocking=self.non_blocking)
+                
+                # Standard precision forward pass (simplified for CPU)
+                action_probs = self.policy_net(batch_obs)
+                action_dist = torch.distributions.Categorical(action_probs)
+                new_log_probs = action_dist.log_prob(batch_actions)
+                
+                ratio = torch.exp(new_log_probs - batch_old_log_probs)
+                surr1 = ratio * batch_advantages
+                surr2 = torch.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range) * batch_advantages
+                policy_loss = -torch.min(surr1, surr2).mean()
+                
+                # Value update
+                values = self.value_net(batch_obs).squeeze()
+                value_loss = F.mse_loss(values, batch_returns)
+                
+                # Entropy bonus
+                entropy = action_dist.entropy().mean()
+                
+                # KL divergence (for monitoring)
+                kl_div = (batch_old_log_probs - new_log_probs).mean()
+                
+                # Total loss
+                total_loss = policy_loss + self.vf_coef * value_loss - self.ent_coef * entropy
+                
+                # Backward pass
+                self.policy_optimizer.zero_grad()
+                self.value_optimizer.zero_grad()
+                total_loss.backward()
+                
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.value_net.parameters(), self.max_grad_norm)
+                
+                # Optimizer step
+                self.policy_optimizer.step()
+                self.value_optimizer.step()
+                
+                # Accumulate metrics
+                total_policy_loss += policy_loss.item()
+                total_value_loss += value_loss.item()
+                total_entropy += entropy.item()
+                total_kl += kl_div.item()
+                num_updates += 1
+        
+        # Calculate averages
+        avg_policy_loss = total_policy_loss / num_updates if num_updates > 0 else 0
+        avg_value_loss = total_value_loss / num_updates if num_updates > 0 else 0
+        avg_entropy = total_entropy / num_updates if num_updates > 0 else 0
+        avg_kl = total_kl / num_updates if num_updates > 0 else 0
+        
+        # Store training stats
+        self.training_stats['policy_loss'].append(avg_policy_loss)
+        self.training_stats['value_loss'].append(avg_value_loss)
+        self.training_stats['entropy'].append(avg_entropy)
+        self.training_stats['kl_divergence'].append(avg_kl)
+        
+        # Clear cache
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         

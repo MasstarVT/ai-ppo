@@ -506,6 +506,9 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
             while not env.done and timestep < timesteps:
                 # Check if buffer is full and needs updating
                 if agent.buffer.ptr >= agent.n_steps:
+                    # Finish current path before updating
+                    agent.finish_episode(obs)
+                    
                     # Update agent and reset buffer
                     try:
                         training_stats = agent.update()
@@ -519,6 +522,8 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
                 elif agent.buffer.ptr >= agent.n_steps // 2 and timestep >= timesteps * 0.9:
                     # Near end of training, do partial updates to prevent getting stuck
                     try:
+                        # Finish current path before partial update
+                        agent.finish_episode(obs)
                         training_stats = agent.update_partial(force_final=True)
                         if timestep % 1000 == 0:
                             print(f"  End-game partial update - Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
