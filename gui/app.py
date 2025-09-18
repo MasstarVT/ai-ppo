@@ -812,6 +812,104 @@ if 'training_active' not in st.session_state:
 if 'training_metrics' not in st.session_state:
     st.session_state.training_metrics = []
 
+def detect_active_training():
+    """Detect if training is currently active based on log file activity and process checks."""
+    try:
+        # Try to use psutil for process detection
+        try:
+            import psutil
+            
+            # Check for running Python processes with train_enhanced.py
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info.get('cmdline', [])
+                    if (cmdline and 
+                        'python' in cmdline[0].lower() and 
+                        any('train_enhanced.py' in str(arg) for arg in cmdline)):
+                        
+                        # Found a training process - store its info
+                        st.session_state.training_active = True
+                        st.session_state.training_process_pid = proc.info['pid']
+                        
+                        # Try to determine training mode from cmdline
+                        if '--mode' in cmdline:
+                            try:
+                                mode_idx = cmdline.index('--mode')
+                                if mode_idx + 1 < len(cmdline):
+                                    st.session_state.training_mode = cmdline[mode_idx + 1]
+                            except (ValueError, IndexError):
+                                pass
+                        
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except ImportError:
+            # psutil not available, skip process-based detection
+            pass
+                
+        # Check for recent log activity (within last 5 minutes)
+        log_file = os.path.join(os.path.dirname(__file__), '..', 'logs', 'training_debug.log')
+        if os.path.exists(log_file):
+            stat = os.stat(log_file)
+            last_modified = stat.st_mtime
+            current_time = time.time()
+            
+            # If log was modified in last 5 minutes, check what kind of activity
+            if current_time - last_modified < 300:  # 5 minutes
+                try:
+                    with open(log_file, 'r') as f:
+                        lines = f.readlines()
+                        
+                    # First check if training was recently stopped or failed
+                    for line in reversed(lines[-50:]):  # Check last 50 lines
+                        if any(keyword in line for keyword in ['TRAINING STOPPED', 'TRAINING FAILED', 'Training completed', 'stopped by user']):
+                            # Check if this stop/fail event is recent (within last 5 minutes)
+                            import re
+                            timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
+                            if timestamp_match:
+                                log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
+                                if current_time - log_time.timestamp() < 300:
+                                    # Training was recently stopped/failed, so it's not active
+                                    return False
+                    
+                    # Now look for recent active progress lines (only if no recent stop/fail)
+                    for line in reversed(lines[-20:]):  # Check last 20 lines
+                        if any(keyword in line for keyword in ['Step', 'Episode']) and '%' in line:
+                            # Check if this progress line is recent and not followed by a stop
+                            import re
+                            timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
+                            if timestamp_match:
+                                log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
+                                if current_time - log_time.timestamp() < 120:  # Only very recent (2 minutes)
+                                    # Check if there's a stop message after this progress line
+                                    line_idx = lines.index(line) if line in lines else -1
+                                    if line_idx >= 0:
+                                        # Check subsequent lines for stop messages
+                                        subsequent_lines = lines[line_idx+1:]
+                                        stop_found = any(keyword in sub_line for sub_line in subsequent_lines 
+                                                       for keyword in ['TRAINING STOPPED', 'TRAINING FAILED', 'stopped by user'])
+                                        if not stop_found:
+                                            st.session_state.training_active = True
+                                            return True
+                except Exception:
+                    pass
+                    
+        return False
+        
+    except Exception:
+        return False
+
+# Detect active training on startup
+if not st.session_state.training_active:
+    if detect_active_training():
+        # Initialize training start time if not set
+        if not hasattr(st.session_state, 'training_start_time'):
+            st.session_state.training_start_time = time.time() - 60  # Assume started 1 minute ago
+        
+        # Set default training mode if not detected
+        if not hasattr(st.session_state, 'training_mode'):
+            st.session_state.training_mode = 'new'
+
 def main():
     """Get dark theme CSS styles."""
     return """
@@ -1131,7 +1229,6 @@ def show_dashboard():
         
         try:
             # Create simple sample data
-            import datetime
             dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
             np.random.seed(42)
             values = np.cumsum(np.random.normal(0, 20, 100)) + 10000
@@ -1571,6 +1668,46 @@ def show_training():
     
     st.title("🎯 Model Training")
     
+    # Training state management
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        # Show current training status
+        if st.session_state.training_active:
+            st.info("🔄 Training appears to be active")
+        else:
+            st.success("✅ Ready to start new training")
+    
+    with col2:
+        # Manual training state reset button
+        if st.button("🔄 Refresh Status", help="Check for active training processes and refresh status"):
+            # Force re-check training status
+            if detect_active_training():
+                st.rerun()
+            else:
+                st.session_state.training_active = False
+                if hasattr(st.session_state, 'training_process'):
+                    delattr(st.session_state, 'training_process')
+                if hasattr(st.session_state, 'training_mode'):
+                    delattr(st.session_state, 'training_mode')
+                st.success("Status refreshed")
+                st.rerun()
+    
+    with col3:
+        # Force reset button for stuck states
+        if st.button("🚫 Reset State", help="Force reset training state if stuck"):
+            st.session_state.training_active = False
+            if hasattr(st.session_state, 'training_process'):
+                delattr(st.session_state, 'training_process')
+            if hasattr(st.session_state, 'training_mode'):
+                delattr(st.session_state, 'training_mode')
+            if hasattr(st.session_state, 'training_start_time'):
+                delattr(st.session_state, 'training_start_time')
+            st.success("Training state reset successfully!")
+            st.rerun()
+    
+    st.divider()
+    
     # Get available models for continuing training (cached)
     available_models = get_available_models()
     
@@ -1910,18 +2047,21 @@ def show_training():
                             
                             # Look for progress lines after training started
                             progress_lines = []
+                            continuous_activity = []
+                            
                             for line in reversed(lines[-100:]):  # Check last 100 lines
-                                if 'Step' in line and '%' in line and ')' in line:
-                                    # Parse timestamp from log line
-                                    import re
-                                    timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
-                                    if timestamp_match:
-                                        from datetime import datetime
-                                        log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
-                                        log_timestamp = log_time.timestamp()
+                                # Parse timestamp from log line
+                                import re
+                                timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
+                                if timestamp_match:
+                                    log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
+                                    log_timestamp = log_time.timestamp()
+                                    
+                                    # Only consider logs from current training session (with buffer)
+                                    if log_timestamp >= training_start - 30:  # 30 second buffer
                                         
-                                        # Only consider logs from current training session
-                                        if log_timestamp >= training_start - 30:  # 30 second buffer
+                                        # Regular training progress
+                                        if 'Step' in line and '%' in line and ')' in line:
                                             step_match = re.search(r'Step\s+(\d+)/(\d+)\s+\(\s*(\d+\.?\d*)%\)', line)
                                             if step_match:
                                                 current_step = int(step_match.group(1))
@@ -1929,20 +2069,65 @@ def show_training():
                                                 progress_pct = float(step_match.group(3))
                                                 progress_lines.append((current_step, total_steps, progress_pct, log_timestamp))
                                         
-                            # Get the most recent progress from current session
-                            if progress_lines:
-                                # Sort by timestamp and get the latest
-                                progress_lines.sort(key=lambda x: x[3], reverse=True)
-                                current_step, total_steps, progress_pct, _ = progress_lines[0]
-                                actual_progress = progress_pct
-                                debug_info = f"Step {current_step}/{total_steps}"
+                                        # Continuous training activity (saves, checkpoints, episodes)
+                                        elif any(keyword in line.lower() for keyword in ['saved model', 'checkpoint', 'episode', 'timestep']):
+                                            # Look for timestep information in continuous training
+                                            timestep_match = re.search(r'timestep[s]?\s*:?\s*(\d+)', line.lower())
+                                            episode_match = re.search(r'episode[s]?\s*:?\s*(\d+)', line.lower())
+                                            
+                                            if timestep_match:
+                                                timesteps = int(timestep_match.group(1))
+                                                continuous_activity.append(('timestep', timesteps, log_timestamp))
+                                            elif episode_match:
+                                                episodes = int(episode_match.group(1))
+                                                continuous_activity.append(('episode', episodes, log_timestamp))
+                                            else:
+                                                # General activity indicator
+                                                continuous_activity.append(('activity', 0, log_timestamp))
+                                        
+                            # Determine progress based on training mode
+                            training_mode = getattr(st.session_state, 'training_mode', 'new')
+                            
+                            if training_mode == 'continuous':
+                                # For continuous training, show activity indicators
+                                if continuous_activity:
+                                    continuous_activity.sort(key=lambda x: x[2], reverse=True)
+                                    activity_type, value, timestamp = continuous_activity[0]
+                                    
+                                    # Calculate time since last activity
+                                    time_since = time.time() - timestamp
+                                    if time_since < 60:  # Active within last minute
+                                        if activity_type == 'timestep':
+                                            debug_info = f"Timesteps: {value:,}"
+                                            actual_progress = min(85, (value / 50000) * 100)  # Rough progress based on timesteps
+                                        elif activity_type == 'episode':
+                                            debug_info = f"Episodes: {value:,}"
+                                            actual_progress = min(85, (value / 1000) * 100)  # Rough progress based on episodes
+                                        else:
+                                            debug_info = "Training active"
+                                            actual_progress = 50  # Show 50% for general activity
+                                    else:
+                                        debug_info = f"Last activity: {int(time_since//60)}m ago"
+                                        actual_progress = 25  # Reduced progress for older activity
+                                        
+                            else:
+                                # Regular training with step-based progress
+                                if progress_lines:
+                                    # Sort by timestamp and get the latest
+                                    progress_lines.sort(key=lambda x: x[3], reverse=True)
+                                    current_step, total_steps, progress_pct, _ = progress_lines[0]
+                                    actual_progress = progress_pct
+                                    debug_info = f"Step {current_step}/{total_steps}"
                                     
                     except Exception as e:
                         debug_info = f"Parse error"
                     
                     # Show actual progress if available, otherwise use time estimation
                     if actual_progress is not None and actual_progress > 0:
-                        st.metric("Training Progress", f"{actual_progress:.1f}%", delta=debug_info)
+                        if training_mode == 'continuous':
+                            st.metric("Training Activity", f"{actual_progress:.0f}%", delta=debug_info)
+                        else:
+                            st.metric("Training Progress", f"{actual_progress:.1f}%", delta=debug_info)
                         progress = actual_progress
                     else:
                         # Fallback to time-based estimation
@@ -1955,7 +2140,15 @@ def show_training():
                             progress = 0
                 
                 # Progress bar
-                st.progress(min(progress / 100.0, 0.99))  # Cap at 99% to show it's still running
+                if training_mode == 'continuous':
+                    # For continuous training, show a pulsing or indeterminate progress indicator
+                    if progress > 0:
+                        st.progress(min(progress / 100.0, 0.85))  # Cap at 85% for continuous
+                    else:
+                        st.progress(0.5)  # Show 50% as default for continuous training
+                else:
+                    # Regular training with standard progress bar
+                    st.progress(min(progress / 100.0, 0.99))  # Cap at 99% to show it's still running
                 
                 # Control buttons
                 col1, col2, col3 = st.columns([1, 1, 2])
@@ -1979,6 +2172,10 @@ def show_training():
                 
                 # Console output information
                 st.info("📺 **Real-time training logs are displayed in the console/terminal where you started the GUI.** Check your terminal window to see detailed training progress!")
+                
+                # Special note for continuous training
+                if training_mode == 'continuous':
+                    st.info("♾️ **Continuous Training Mode**: This training will run indefinitely. Progress shows recent activity rather than completion percentage. Stop training manually when satisfied with results.")
                 
                 # Auto-refresh option
                 auto_refresh = st.checkbox("Auto-refresh every 10 seconds", value=True)
