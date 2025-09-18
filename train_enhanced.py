@@ -52,22 +52,38 @@ if sys.platform == "win32":
     sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
     sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
 
-# Add src to path
+# Add project root and src to path
 current_dir = Path(__file__).parent
+root_path = current_dir
 src_path = current_dir / "src"
-sys.path.insert(0, str(src_path))
+for p in (str(root_path), str(src_path)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 print(">>> Loading modules...")
 
 try:
-    from agents.ppo_agent import PPOAgent
-    from environments.trading_env import TradingEnvironment
-    from data.data_client import DataClient
-    from utils.config import ConfigManager, create_default_config
+    from src.agents.ppo_agent import PPOAgent
+    from src.environments.trading_env import TradingEnvironment
+    from src.data.data_client import DataClient
+    from src.data.indicators import prepare_features
+    from src.utils.config import ConfigManager, create_default_config
     print("[OK] All modules loaded")
 except ImportError as e:
-    print(f"[ERROR] Import error: {e}")
-    sys.exit(1)
+    # Fallback using dynamic import to avoid static analyzer errors
+    try:
+        import importlib
+        PPOAgent = importlib.import_module('agents.ppo_agent').PPOAgent
+        TradingEnvironment = importlib.import_module('environments.trading_env').TradingEnvironment
+        DataClient = importlib.import_module('data.data_client').DataClient
+        prepare_features = importlib.import_module('data.indicators').prepare_features
+        cfg_mod = importlib.import_module('utils.config')
+        ConfigManager = getattr(cfg_mod, 'ConfigManager')
+        create_default_config = getattr(cfg_mod, 'create_default_config')
+        print("[OK] Modules loaded via dynamic fallback imports")
+    except Exception as e2:
+        print(f"[ERROR] Import error: {e}; fallback failed: {e2}")
+        sys.exit(1)
 
 def rename_model(old_path, new_name):
     """
@@ -240,9 +256,6 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
     
     # Load training data
     try:
-        from data.data_client import DataClient
-        from data.indicators import prepare_features
-        
         # Initialize data client
         data_client = DataClient(config)
         
@@ -447,9 +460,6 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
     
     # Load training data
     try:
-        from data.data_client import DataClient
-        from data.indicators import prepare_features
-        
         # Initialize data client
         data_client = DataClient(config)
         
@@ -667,40 +677,37 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         print(f"       Activation: {config['network']['activation']}")
 
     print("[SETUP] Setting up training environment...")
-    
+
     # Load training data
     try:
-        from data.data_client import DataClient
-        from data.indicators import prepare_features
-        
         # Initialize data client
         data_client = DataClient(config)
-        
+
         # Get symbols and parameters from config
         symbols = config.get('trading', {}).get('symbols', ['AAPL'])
         period = config.get('training', {}).get('data_period', '1y')
         interval = config.get('trading', {}).get('timeframe', '1h')
-        
+
         print(f"[DATA] Loading data for symbols: {symbols}")
-        
+
         # Fetch data for training
         raw_data = data_client.get_multiple_symbols_data(symbols, period, interval)
-        
+
         if not raw_data:
             raise ValueError("No data was fetched")
-        
+
         # Use the first symbol's data for training
         symbol = symbols[0]
         if symbol not in raw_data:
             symbol = list(raw_data.keys())[0]
-        
+
         df = raw_data[symbol]
         print(f"[INFO] Loaded {len(df)} bars for {symbol}")
-        
+
         # Prepare features
         data = prepare_features(df, config)
         print(f"[OK] Prepared {len(data)} feature bars")
-        
+
     except Exception as e:
         print(f"[ERROR] Error loading data: {e}")
         return False

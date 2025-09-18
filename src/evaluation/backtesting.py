@@ -9,9 +9,14 @@ import logging
 from datetime import datetime, timedelta
 import os
 
-from environments import TradingEnvironment, Portfolio
-from data import DataClient, prepare_features
-from utils import calculate_performance_metrics, format_currency, format_percentage
+try:
+    from src.environments import TradingEnvironment, Portfolio
+    from src.data import DataClient, prepare_features
+    from src.utils import calculate_performance_metrics, format_currency, format_percentage
+except Exception:
+    from environments import TradingEnvironment, Portfolio
+    from data import DataClient, prepare_features
+    from utils import calculate_performance_metrics, format_currency, format_percentage
 
 logger = logging.getLogger(__name__)
 
