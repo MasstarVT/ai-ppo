@@ -77,6 +77,9 @@ class TechnicalIndicators:
         """Calculate all technical indicators for a given DataFrame."""
         try:
             result_df = df.copy()
+            # Preserve raw close price for portfolio valuation/backtesting
+            if 'Close' in result_df.columns and 'Close_raw' not in result_df.columns:
+                result_df['Close_raw'] = result_df['Close']
             
             # Simple Moving Averages
             for period in config.get('indicators', {}).get('sma_periods', [10, 20, 50]):

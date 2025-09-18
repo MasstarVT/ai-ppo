@@ -38,3 +38,4 @@ streamlit-option-menu>=0.3.6
 streamlit-aggrid>=0.3.4
 dash>=2.14.0
 dash-bootstrap-components>=1.5.0
+psutil>=5.9.0

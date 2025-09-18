@@ -132,6 +132,8 @@ class TradingEnvironment(gym.Env):
         super().__init__()
         
         self.data = data.copy()
+        # Exclude Close_raw from observation features to preserve model input size
+        self.feature_columns = [c for c in self.data.columns if c not in ['datetime', 'Close_raw']]
         self.config = config
         self.lookback_window = config.get('environment', {}).get('lookback_window', 50)
         self.max_episode_steps = config.get('environment', {}).get('max_episode_steps', 1000)
@@ -145,6 +147,12 @@ class TradingEnvironment(gym.Env):
         # Initialize portfolio
         self.portfolio = Portfolio(self.initial_balance, self.transaction_cost, self.slippage)
         
+        # Reward configuration
+        env_cfg = config.get('environment', {})
+        self.reward_mode = env_cfg.get('reward_mode', 'incremental')  # 'incremental' or 'cumulative'
+        self.trade_penalty = float(env_cfg.get('trade_penalty', 0.0001))  # small penalty per trade action
+        self.risk_penalty_scale = float(env_cfg.get('risk_penalty_scale', 2.0))
+        
         # Define observation and action spaces
         self._setup_spaces()
         
@@ -152,6 +160,7 @@ class TradingEnvironment(gym.Env):
         self.current_step = 0
         self.episode_start_idx = 0
         self.done = False
+        self._last_portfolio_value = self.initial_balance
         
         # Performance tracking
         self.episode_returns = []
@@ -167,7 +176,7 @@ class TradingEnvironment(gym.Env):
         
         # Observation space: market data + portfolio state
         # Market features: OHLCV + technical indicators
-        market_features = len([col for col in self.data.columns if col not in ['datetime']])
+        market_features = len(self.feature_columns)
         
         # Portfolio features: balance, shares, total_value, position_ratio
         portfolio_features = 4
@@ -189,16 +198,17 @@ class TradingEnvironment(gym.Env):
         end_idx = self.episode_start_idx + self.current_step + 1
         start_idx = max(0, end_idx - self.lookback_window)
         
-        # Get market data
-        market_data = self.data.iloc[start_idx:end_idx].values
+        # Get market data (exclude Close_raw)
+        market_data = self.data[self.feature_columns].iloc[start_idx:end_idx].values
         
         # Pad if we don't have enough historical data
         if len(market_data) < self.lookback_window:
             padding = np.zeros((self.lookback_window - len(market_data), market_data.shape[1]))
             market_data = np.vstack([padding, market_data])
         
-        # Get current price for portfolio calculations
-        current_price = self.data.iloc[end_idx - 1]['Close']
+        # Get current price for portfolio calculations (prefer raw)
+        row = self.data.iloc[end_idx - 1]
+        current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
         
         # Portfolio state
         portfolio_state = np.array([
@@ -218,15 +228,22 @@ class TradingEnvironment(gym.Env):
     
     def _calculate_reward(self, action: int, trade_info: Dict) -> float:
         """Calculate reward for the current step."""
-        current_price = self.data.iloc[self.episode_start_idx + self.current_step]['Close']
+        row = self.data.iloc[self.episode_start_idx + self.current_step]
+        current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
         
-        # Base reward: portfolio return
-        portfolio_return = self.portfolio.get_return(current_price)
-        reward = portfolio_return
+        # Compute portfolio values
+        current_value = self.portfolio.get_total_value(current_price)
+        if self.reward_mode == 'incremental':
+            prev_value = max(1e-8, self._last_portfolio_value)
+            step_return = (current_value - prev_value) / prev_value
+            reward = step_return
+        else:
+            # Fallback to cumulative return (legacy)
+            reward = self.portfolio.get_return(current_price)
         
         # Penalize excessive trading
         if action != TradingAction.HOLD:
-            reward -= 0.01  # Small penalty for trading
+            reward -= self.trade_penalty
         
         # Reward for profitable trades
         if trade_info.get('shares_traded', 0) != 0:
@@ -242,13 +259,19 @@ class TradingEnvironment(gym.Env):
                 reward += sharpe_ratio * 0.1
         
         # Penalize large drawdowns
-        max_value = max([self.portfolio.get_total_value(self.data.iloc[i]['Close']) 
-                        for i in range(self.episode_start_idx, min(self.episode_start_idx + self.current_step + 1, len(self.data)))])
-        current_value = self.portfolio.get_total_value(current_price)
+        max_value = max([
+            self.portfolio.get_total_value(
+                self.data.iloc[i]['Close_raw'] if 'Close_raw' in self.data.columns else self.data.iloc[i]['Close']
+            )
+            for i in range(
+                self.episode_start_idx,
+                min(self.episode_start_idx + self.current_step + 1, len(self.data))
+            )
+        ])
         drawdown = (max_value - current_value) / max_value if max_value > 0 else 0
         
         if drawdown > 0.1:  # More than 10% drawdown
-            reward -= drawdown * 2
+            reward -= drawdown * self.risk_penalty_scale
         
         return reward
     
@@ -258,7 +281,8 @@ class TradingEnvironment(gym.Env):
             raise ValueError("Episode has ended. Call reset() to start a new episode.")
         
         # Get current price
-        current_price = self.data.iloc[self.episode_start_idx + self.current_step]['Close']
+        row = self.data.iloc[self.episode_start_idx + self.current_step]
+        current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
         
         # Execute trade
         trade_info = self.portfolio.execute_trade(action, current_price, self.max_position_size)
@@ -267,6 +291,8 @@ class TradingEnvironment(gym.Env):
         reward = self._calculate_reward(action, trade_info)
         
         # Update episode tracking
+        # Update last portfolio value for next step's incremental reward
+        self._last_portfolio_value = self.portfolio.get_total_value(current_price)
         self.current_step += 1
         portfolio_return = self.portfolio.get_return(current_price)
         self.episode_returns.append(portfolio_return)
@@ -304,6 +330,7 @@ class TradingEnvironment(gym.Env):
         self.current_step = 0
         self.done = False
         self.episode_returns = []
+        self._last_portfolio_value = self.initial_balance
         
         # Set episode start index
         if start_idx is not None:
@@ -320,7 +347,8 @@ class TradingEnvironment(gym.Env):
     def render(self, mode: str = 'human'):
         """Render the environment (for debugging)."""
         if mode == 'human':
-            current_price = self.data.iloc[self.episode_start_idx + self.current_step]['Close']
+            row = self.data.iloc[self.episode_start_idx + self.current_step]
+            current_price = row['Close_raw'] if 'Close_raw' in row else row['Close']
             portfolio_value = self.portfolio.get_total_value(current_price)
             portfolio_return = self.portfolio.get_return(current_price)
             

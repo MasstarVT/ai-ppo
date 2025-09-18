@@ -26,6 +26,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Ensure project root and src are on path and import core components
+ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SRC_PATH = os.path.join(ROOT_PATH, 'src')
+for _p in (ROOT_PATH, SRC_PATH):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    # Prefer package-style imports
+    from src.data import DataClient, prepare_features
+    from src.environments import TradingEnvironment
+    from src.agents import PPOAgent
+    from src.evaluation.backtesting import Backtester
+    from src.utils import ConfigManager, create_default_config, format_currency, format_percentage
+    from streamlit_option_menu import option_menu
+except Exception as _e:
+    # Defer errors to UI; some pages may still work
+    logger.warning(f"Optional imports failed (some features may be unavailable): {_e}")
+
+# Basic error handler decorator used across views
+def handle_errors(fn):
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            st.error(f"Error: {e}")
+            logger.exception(e)
+            return None
+    return wrapper
+
+# Theme helpers expected by the UI
+def get_theme_css():
+    theme = st.session_state.get('theme', 'dark')
+    if theme not in ('dark', 'light'):
+        theme = 'dark'
+    return get_dark_theme_css() if theme == 'dark' else get_light_theme_css()
+
+def get_plotly_theme():
+    theme = st.session_state.get('theme', 'dark')
+    return dict(template='plotly_dark') if theme == 'dark' else dict(template='plotly_white')
+
+# Minimal system status gate to avoid blocking UI if not defined elsewhere
+def show_system_status():
+    return True
+
 # Global flags to prevent repeated initialization messages
 _GUI_ALREADY_INITIALIZED = False
 _YAML_LOGGED = False
@@ -45,222 +90,6 @@ def is_first_gui_run():
         st.session_state.gui_session_started = True
         return True
     return False
-
-# Only show essential startup messages on first run per session
-if is_first_gui_run():
-    print("📊 Starting AI PPO Trading GUI...")
-    logger.info("GUI Application Starting")
-
-# Add src to path and import external dependencies
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-from streamlit_option_menu import option_menu
-from st_aggrid import AgGrid, GridOptionsBuilder
-
-_SYSTEM_READY_LOGGED = False
-
-# Import trading system components
-SYSTEM_READY = False
-IMPORT_ERROR = None
-
-# Test yaml import first (only show message on first run)
-try:
-    import yaml
-    if not _YAML_LOGGED and 'yaml_imported_logged' not in st.session_state:
-        print("✅ YAML imported")
-        st.session_state.yaml_imported_logged = True
-        _YAML_LOGGED = True
-except ImportError as e:
-    print(f"❌ YAML import failed: {e}")
-    st.error(f"❌ YAML import failed: {e}")
-    st.info("💡 Please install PyYAML: `pip install PyYAML`")
-    IMPORT_ERROR = f"YAML import error: {e}"
-
-# Load components (only show message on first run)
-if 'components_loading_logged' not in st.session_state:
-    print("🔄 Loading components...")
-    st.session_state.components_loading_logged = True
-
-try:
-    from data import DataClient, prepare_features
-    from environments import TradingEnvironment
-    from agents import PPOAgent
-    from evaluation.backtesting import Backtester
-    from utils import ConfigManager, create_default_config, format_currency, format_percentage
-    
-    if 'core_components_logged' not in st.session_state:
-        print("✅ Core components loaded")
-        st.session_state.core_components_logged = True
-    
-    # Try to import training manager (requires torch/numpy)
-    try:
-        from utils import training_manager, BackgroundTrainingManager, NetworkAnalyzer
-        TRAINING_MANAGER_AVAILABLE = True
-        if 'training_manager_logged' not in st.session_state:
-            print("✅ Background training manager available")
-            st.session_state.training_manager_logged = True
-    except ImportError:
-        TRAINING_MANAGER_AVAILABLE = False
-        if 'training_manager_warning_logged' not in st.session_state:
-            print("ℹ️ Background training manager not available (requires torch/numpy)")
-            st.session_state.training_manager_warning_logged = True
-    
-    # Test basic functionality
-    _test_config = create_default_config()
-    SYSTEM_READY = True
-    if 'all_components_logged' not in st.session_state:
-        print("✅ All trading system components imported successfully")
-        st.session_state.all_components_logged = True
-
-except ImportError as e:
-    SYSTEM_READY = False
-    IMPORT_ERROR = f"Import error: {e}"
-    if 'import_error_logged' not in st.session_state:
-        st.error(f"⚠️ Error importing trading system components: {e}")
-        st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
-        st.session_state.import_error_logged = True    # Show detailed error information
-    with st.expander("🔍 Detailed Error Information"):
-        st.code(f"Error: {e}")
-        st.code(f"Python Path: {sys.path}")
-        st.code(f"Current Directory: {os.getcwd()}")
-        st.code(f"Script Directory: {os.path.dirname(__file__)}")
-        
-        # Test specific imports
-        st.write("**Testing individual imports:**")
-        for module_name in ['yaml', 'utils', 'data', 'environments', 'agents', 'evaluation.backtesting']:
-            try:
-                if module_name == 'yaml':
-                    import yaml
-                elif module_name == 'utils':
-                    from utils import ConfigManager
-                elif module_name == 'data':
-                    from data import DataClient
-                elif module_name == 'environments':
-                    from environments import TradingEnvironment
-                elif module_name == 'agents':
-                    from agents import PPOAgent
-                elif module_name == 'evaluation.backtesting':
-                    from evaluation.backtesting import Backtester
-                st.write(f"✅ {module_name}")
-            except Exception as ex:
-                st.write(f"❌ {module_name}: {ex}")
-    
-    # Create fallback function
-    def create_default_config():
-        """Fallback default config when imports fail."""
-        return {
-            'trading': {
-                'symbols': ['AAPL', 'MSFT', 'GOOGL', 'BTC/USDT', 'ETH/USDT'],
-                'timeframe': '1h',
-                'initial_balance': 10000,
-                'max_position_size': 0.1,
-                'transaction_cost': 0.001,
-                'slippage': 0.0005
-            },
-            'ppo': {
-                'learning_rate': 3e-4,
-                'n_steps': 2048,
-                'batch_size': 64,
-                'n_epochs': 10,
-                'gamma': 0.99,
-                'gae_lambda': 0.95,
-                'clip_range': 0.2,
-                'ent_coef': 0.01,
-                'vf_coef': 0.5,
-                'max_grad_norm': 0.5
-            },
-            'training': {
-                'total_timesteps': 100000,
-                'eval_freq': 10000,
-                'save_freq': 50000,
-                'log_interval': 1000,
-                'n_eval_episodes': 10
-            },
-            'network': {
-                'policy_layers': [256, 256],
-                'value_layers': [256, 256],
-                'activation': 'tanh'
-            },
-            'paths': {
-                'data_dir': 'data',
-                'model_dir': 'models',
-                'log_dir': 'logs'
-            }
-        }
-    
-    def format_currency(value):
-        """Fallback currency formatter."""
-        return f"${value:,.2f}"
-    
-    def format_percentage(value):
-        """Fallback percentage formatter."""
-        return f"{value*100:.2f}%"
-    
-except Exception as e:
-    SYSTEM_READY = False
-    IMPORT_ERROR = f"System error: {e}"
-    st.error(f"⚠️ System initialization error: {e}")
-
-
-def handle_errors(func):
-    """Decorator to handle errors in GUI functions gracefully."""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            st.error(f"❌ Error in {func.__name__}: {str(e)}")
-            st.info("💡 Please check your configuration and try again.")
-            logger.error(f"GUI error in {func.__name__}: {e}", exc_info=True)
-            return None
-    return wrapper
-
-
-@handle_errors
-def show_system_status():
-    """Show system status and health checks."""
-    if not SYSTEM_READY:
-        st.error("🔴 System Not Ready")
-        st.warning(f"Issue: {IMPORT_ERROR}")
-        st.info("Please resolve the issues above before using the system.")
-        return False
-    
-    return True
-
-# Page configuration
-st.set_page_config(
-    page_title="AI PPO Trading System",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-def get_theme_css():
-    """Get CSS styles based on current theme."""
-    if st.session_state.theme == 'light':
-        return get_light_theme_css()
-    else:
-        return get_dark_theme_css()
-
-def get_plotly_theme():
-    """Get plotly theme configuration based on current theme."""
-    # Ensure theme is initialized
-    if 'theme' not in st.session_state:
-        st.session_state.theme = 'dark'
-        
-    if st.session_state.theme == 'light':
-        return {
-            'paper_bgcolor': 'white',
-            'plot_bgcolor': 'white',
-            'font': {'color': '#212529'},
-            'colorway': ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#e83e8c', '#fd7e14', '#20c997']
-        }
-    else:
-        return {
-            'paper_bgcolor': '#262730',
-            'plot_bgcolor': '#262730', 
-            'font': {'color': '#ffffff'},
-            'colorway': ['#667eea', '#51cf66', '#ffd43b', '#ff6b6b', '#a78bfa', '#f472b6', '#fb923c', '#34d399']
-        }
 
 def get_dark_theme_css():
     """Get dark theme CSS styles."""
@@ -817,7 +646,8 @@ def detect_active_training():
     try:
         # Try to use psutil for process detection
         try:
-            import psutil
+            import importlib
+            psutil = importlib.import_module('psutil')
             
             # Check for running Python processes with train_enhanced.py
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -3148,323 +2978,220 @@ def show_training():
 def show_backtesting():
     """Show backtesting interface."""
     st.title("📊 Backtesting")
-    
     # Model selection
-    model_files = []
-    if os.path.exists("models"):
-        model_files = [f for f in os.listdir("models") if f.endswith('.pt')]
-    
+    model_files = [f for f in os.listdir("models")] if os.path.isdir("models") else []
+    model_files = [f for f in model_files if f.endswith('.pt')]
     if not model_files:
         st.warning("No trained models found. Please train a model first.")
         return
-    
+
     selected_model = st.selectbox("Select Model", model_files)
-    
+
     # Backtest parameters
     col1, col2 = st.columns(2)
-    
     with col1:
         start_date = st.date_input("Backtest Start Date", value=datetime.now() - timedelta(days=365))
         initial_balance = st.number_input("Initial Balance ($)", value=10000, min_value=1000, step=1000)
-    
     with col2:
         end_date = st.date_input("Backtest End Date", value=datetime.now())
-        symbols = st.session_state.config.get('trading', {}).get('symbols', ['AAPL'])
+        symbols = st.session_state.get('config', {}).get('trading', {}).get('symbols', ['AAPL'])
         selected_symbol = st.selectbox("Symbol", symbols)
-    
+
     # Advanced options
     with st.expander("Advanced Options"):
-        create_dashboard = st.checkbox("Create Visualization Dashboard", value=True)
-        walk_forward = st.checkbox("Run Walk-Forward Analysis", value=False)
         benchmark_comparison = st.checkbox("Compare with Buy & Hold", value=True)
-    
-    if st.button("🚀 Run Backtest"):
+
+    if st.button("🚀 Run Backtest", use_container_width=True):
         with st.spinner("Running backtest..."):
-            # Simulate backtest results
-            st.info(f"Running backtest for {selected_symbol} using model {selected_model}")
-            
-            # Create sample backtest results
-            dates = pd.date_range(start=start_date, end=end_date, freq='D')
-            np.random.seed(42)
-            
-            # Generate realistic stock price data
-            price_changes = np.random.normal(0.001, 0.02, len(dates))
-            prices = 100 * (1 + price_changes).cumprod()
-            
-            # Simulate portfolio performance
-            daily_returns = np.random.normal(0.001, 0.015, len(dates))
-            portfolio_values = initial_balance * (1 + daily_returns).cumprod()
-            
-            # Buy and hold benchmark
-            stock_returns = np.random.normal(0.0008, 0.018, len(dates))
-            benchmark_values = initial_balance * (1 + stock_returns).cumprod()
-            
-            # Generate trading signals (buy/sell actions)
-            # Simulate agent decisions based on price movements and technical indicators
-            actions = []
-            positions = []
-            current_position = 0
-            buy_signals = []
-            sell_signals = []
-            
-            for i in range(len(dates)):
-                if i < 20:  # Need some history for indicators
-                    actions.append(0)  # Hold
-                    positions.append(current_position)
-                    continue
-                
-                # Simple trading logic for demonstration
-                # Calculate moving averages
-                short_ma = np.mean(prices[max(0, i-5):i+1])
-                long_ma = np.mean(prices[max(0, i-20):i+1])
-                price_momentum = (prices[i] - prices[i-1]) / prices[i-1] if i > 0 else 0
-                
-                # Trading decision logic
-                if current_position == 0:  # No position
-                    # Buy signal: short MA > long MA and positive momentum
-                    if short_ma > long_ma and price_momentum > 0.01 and np.random.random() > 0.7:
-                        action = 1  # Buy
-                        current_position = 1
-                        buy_signals.append({
-                            'date': dates[i],
-                            'price': prices[i],
-                            'action': 'BUY'
-                        })
-                    else:
-                        action = 0  # Hold
-                elif current_position == 1:  # Long position
-                    # Sell signal: short MA < long MA or negative momentum
-                    if short_ma < long_ma or price_momentum < -0.015 or np.random.random() > 0.8:
-                        action = 2  # Sell
-                        current_position = 0
-                        sell_signals.append({
-                            'date': dates[i],
-                            'price': prices[i],
-                            'action': 'SELL'
-                        })
-                    else:
-                        action = 0  # Hold
-                else:
-                    action = 0  # Hold
-                
-                actions.append(action)
-                positions.append(current_position)
-            
-            # Convert signals to DataFrames for easier handling
-            buy_df = pd.DataFrame(buy_signals) if buy_signals else pd.DataFrame(columns=['date', 'price', 'action'])
-            sell_df = pd.DataFrame(sell_signals) if sell_signals else pd.DataFrame(columns=['date', 'price', 'action'])
-            
-            # Display results
+            # Map explicit date range to a period suitable for provider
+            def _range_to_period(sd, ed):
+                sd2 = pd.to_datetime(sd)
+                ed2 = pd.to_datetime(ed)
+                days = max(1, (ed2 - sd2).days)
+                if days <= 31:
+                    return '1mo'
+                if days <= 92:
+                    return '3mo'
+                if days <= 185:
+                    return '6mo'
+                if days <= 365:
+                    return '1y'
+                if days <= 730:
+                    return '2y'
+                if days <= 1825:
+                    return '5y'
+                return '10y'
+
+            # Start from current UI config, but prefer model's training config if available
+            cfg = st.session_state.get('config') or create_default_config()
+            model_path = os.path.join("models", selected_model)
+            try:
+                import torch
+                ckpt = torch.load(model_path, map_location='cpu')
+                saved_cfg = ckpt.get('config') if isinstance(ckpt, dict) else None
+                if isinstance(saved_cfg, dict) and saved_cfg:
+                    cfg = saved_cfg
+                    st.info("Using model's training configuration for backtest to match features and network shape.")
+            except Exception as e:
+                st.warning(f"Could not read model config from checkpoint; using current settings. ({e})")
+
+            # Always override symbol from UI selection
+            cfg.setdefault('trading', {})
+            cfg['trading']['symbols'] = [selected_symbol]
+
+            data_client = DataClient(cfg)
+            interval = cfg.get('trading', {}).get('timeframe', '1h')
+            period = _range_to_period(start_date, end_date)
+
+            raw = data_client.get_historical_data(selected_symbol, period, interval)
+            if raw is None or raw.empty:
+                st.error("No historical data fetched for the selected range.")
+                return
+
+            # Trim to requested range with timezone awareness
+            idx = raw.index
+            tz = getattr(idx, 'tz', None)
+            if tz is not None:
+                start_ts = pd.Timestamp(start_date).tz_localize(tz)
+                # Include entire end day
+                end_ts = (pd.Timestamp(end_date) + pd.Timedelta(days=1)).tz_localize(tz) - pd.Timedelta(microseconds=1)
+            else:
+                start_ts = pd.Timestamp(start_date)
+                end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+            df_raw = raw[(idx >= start_ts) & (idx <= end_ts)]
+            if df_raw.empty:
+                st.error("No data within selected start/end dates. Try expanding the range.")
+                return
+
+            data = prepare_features(df_raw, cfg)
+            if data.empty:
+                st.error("Feature preparation returned empty data.")
+                return
+
+            # Agent and backtester
+            temp_env = TradingEnvironment(data, cfg)
+            obs_dim = temp_env.observation_space.shape[0]
+            agent = PPOAgent(obs_dim, 3, cfg)
+            agent.load(model_path)
+            # Ensure inference-only behavior (disable dropout/batchnorm randomness)
+            try:
+                agent.policy_net.eval()
+                agent.value_net.eval()
+            except Exception:
+                pass
+
+            backtester = Backtester(cfg)
+            results = backtester.run_backtest(
+                agent=agent,
+                data=data,
+                start_date=pd.to_datetime(start_date).strftime('%Y-%m-%d'),
+                end_date=pd.to_datetime(end_date).strftime('%Y-%m-%d'),
+                initial_balance=float(initial_balance),
+                deterministic=True
+            )
+
+            bt = results.get('backtest_metrics', {})
+            perf = results.get('performance_metrics', {})
+            detailed = results.get('detailed_results', {})
+
             st.subheader("Backtest Results")
-            
-            # Key metrics
-            final_value = portfolio_values[-1]
-            total_return = (final_value / initial_balance - 1) * 100
-            benchmark_return = (benchmark_values[-1] / initial_balance - 1) * 100
-            excess_return = total_return - benchmark_return
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Final Portfolio Value", format_currency(final_value))
-            
-            with col2:
-                st.metric("Total Return", f"{total_return:.2f}%", f"{excess_return:+.2f}%")
-            
-            with col3:
-                # Calculate Sharpe ratio
-                returns_series = pd.Series(daily_returns)
-                sharpe = returns_series.mean() / returns_series.std() * np.sqrt(252)
-                st.metric("Sharpe Ratio", f"{sharpe:.3f}")
-            
-            with col4:
-                # Calculate max drawdown
-                cumulative = pd.Series(portfolio_values)
-                rolling_max = cumulative.expanding().max()
-                drawdown = (cumulative - rolling_max) / rolling_max
-                max_drawdown = drawdown.min() * 100
-                st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
-            
-            # Trading Statistics
-            st.subheader("Trading Activity")
-            
-            trade_col1, trade_col2, trade_col3, trade_col4 = st.columns(4)
-            
-            with trade_col1:
-                st.metric("Total Trades", len(buy_signals) + len(sell_signals))
-            
-            with trade_col2:
-                st.metric("Buy Orders", len(buy_signals))
-            
-            with trade_col3:
-                st.metric("Sell Orders", len(sell_signals))
-            
-            with trade_col4:
-                win_rate = 65 + np.random.normal(0, 10)  # Simulated win rate
-                st.metric("Win Rate", f"{max(0, min(100, win_rate)):.1f}%")
-            
-            # Performance chart with buy/sell markers
-            st.subheader("📈 Price Chart with Trading Signals")
-            
-            fig = go.Figure()
-            
-            # Add price line
-            fig.add_trace(go.Scatter(
-                x=dates,
-                y=prices,
-                mode='lines',
-                name=f'{selected_symbol} Price',
-                line=dict(color='#1f77b4', width=2),
-                hovertemplate='<b>%{fullData.name}</b><br>' +
-                             'Date: %{x}<br>' +
-                             'Price: $%{y:.2f}<br>' +
-                             '<extra></extra>'
-            ))
-            
-            # Add buy signals (green triangles pointing up)
-            if not buy_df.empty:
-                fig.add_trace(go.Scatter(
-                    x=buy_df['date'],
-                    y=buy_df['price'],
-                    mode='markers',
-                    name='Buy Signals',
-                    marker=dict(
-                        symbol='triangle-up',
-                        size=12,
-                        color='#00ff00',
-                        line=dict(color='#008000', width=2)
-                    ),
-                    hovertemplate='<b>BUY SIGNAL</b><br>' +
-                                 'Date: %{x}<br>' +
-                                 'Price: $%{y:.2f}<br>' +
-                                 '<extra></extra>'
-                ))
-            
-            # Add sell signals (red triangles pointing down)
-            if not sell_df.empty:
-                fig.add_trace(go.Scatter(
-                    x=sell_df['date'],
-                    y=sell_df['price'],
-                    mode='markers',
-                    name='Sell Signals',
-                    marker=dict(
-                        symbol='triangle-down',
-                        size=12,
-                        color='#ff0000',
-                        line=dict(color='#800000', width=2)
-                    ),
-                    hovertemplate='<b>SELL SIGNAL</b><br>' +
-                                 'Date: %{x}<br>' +
-                                 'Price: $%{y:.2f}<br>' +
-                                 '<extra></extra>'
-                ))
-            
-            fig.update_layout(
-                title=f"{selected_symbol} Price with AI Trading Signals",
-                xaxis_title="Date",
-                yaxis_title="Price ($)",
-                height=600,
-                legend=dict(x=0, y=1),
-                hovermode='closest',
-                showlegend=True,
-                **get_plotly_theme()
-            )
-            
-            st.plotly_chart(fig, width="stretch")
-            
-            # Portfolio Performance Comparison
-            st.subheader("📊 Portfolio Performance")
-            
-            fig2 = go.Figure()
-            
-            fig2.add_trace(go.Scatter(
-                x=dates,
-                y=portfolio_values,
-                mode='lines',
-                name='AI Strategy',
-                line=dict(color='blue', width=2)
-            ))
-            
-            if benchmark_comparison:
-                fig2.add_trace(go.Scatter(
-                    x=dates,
-                    y=benchmark_values,
-                    mode='lines',
-                    name='Buy & Hold',
-                    line=dict(color='gray', width=2, dash='dash')
-                ))
-            
-            fig2.update_layout(
-                title="Portfolio Performance Comparison",
-                xaxis_title="Date",
-                yaxis_title="Portfolio Value ($)",
-                height=400,
-                legend=dict(x=0, y=1)
-            )
-            
-            st.plotly_chart(fig2, width="stretch")
-            
-            # Trade Details Table
-            if not buy_df.empty or not sell_df.empty:
-                st.subheader("📋 Trade Details")
-                
-                # Combine buy and sell signals
-                all_trades = []
-                for _, trade in buy_df.iterrows():
-                    all_trades.append({
-                        'Date': trade['date'].strftime('%Y-%m-%d'),
-                        'Action': '🟢 BUY',
-                        'Price': f"${trade['price']:.2f}",
-                        'Type': 'Market Order'
-                    })
-                
-                for _, trade in sell_df.iterrows():
-                    all_trades.append({
-                        'Date': trade['date'].strftime('%Y-%m-%d'),
-                        'Action': '🔴 SELL',
-                        'Price': f"${trade['price']:.2f}",
-                        'Type': 'Market Order'
-                    })
-                
-                # Sort by date
-                all_trades.sort(key=lambda x: x['Date'])
-                
-                if all_trades:
-                    trades_df = pd.DataFrame(all_trades)
-                    st.dataframe(trades_df, use_container_width=True, hide_index=True)
+            # If no trades, optionally rerun with stochastic policy
+            total_trades = bt.get('total_trades', 0)
+            if total_trades == 0:
+                st.warning("No trades were executed with deterministic policy. Retrying with stochastic sampling to diagnose behavior…")
+                results_sto = backtester.run_backtest(
+                    agent=agent,
+                    data=data,
+                    start_date=pd.to_datetime(start_date).strftime('%Y-%m-%d'),
+                    end_date=pd.to_datetime(end_date).strftime('%Y-%m-%d'),
+                    initial_balance=float(initial_balance),
+                    deterministic=False
+                )
+                bt_sto = results_sto.get('backtest_metrics', {})
+                trades_sto = bt_sto.get('total_trades', 0)
+                if trades_sto > 0:
+                    st.info(f"Stochastic run executed {trades_sto} trades. Deterministic policy may be strongly preferring HOLD.")
                 else:
-                    st.info("No trades executed during this backtest period.")
-            
-            # Detailed results table
-            st.subheader("Detailed Results")
-            
-            results_data = {
-                'Metric': [
-                    'Initial Balance',
-                    'Final Balance', 
-                    'Total Return',
-                    'Benchmark Return',
-                    'Excess Return',
-                    'Sharpe Ratio',
-                    'Maximum Drawdown',
-                    'Volatility (Annual)',
-                    'Number of Trades'
-                ],
-                'Value': [
-                    format_currency(initial_balance),
-                    format_currency(final_value),
-                    f"{total_return:.2f}%",
-                    f"{benchmark_return:.2f}%",
-                    f"{excess_return:.2f}%",
-                    f"{sharpe:.3f}",
-                    f"{max_drawdown:.2f}%",
-                    f"{returns_series.std() * np.sqrt(252) * 100:.2f}%",
-                    "42"  # Simulated
-                ]
-            }
-            
-            results_df = pd.DataFrame(results_data)
-            st.dataframe(results_df, width="stretch")
+                    st.warning("Even with stochastic sampling, no trades occurred. This suggests a configuration mismatch or a policy that learned to HOLD.")
+                # Prefer the deterministic result for displayed metrics, but show action distributions for both
+                detailed_sto = results_sto.get('detailed_results', {})
+                actions_det = pd.Series(detailed.get('actions', []), name='Deterministic')
+                actions_sto = pd.Series(detailed_sto.get('actions', []), name='Stochastic')
+                dist_df = pd.concat([
+                    actions_det.value_counts().rename(index={0:'SELL',1:'HOLD',2:'BUY'}),
+                    actions_sto.value_counts().rename(index={0:'SELL',1:'HOLD',2:'BUY'})
+                ], axis=1).fillna(0).astype(int)
+                st.subheader("Action Distribution (Deterministic vs Stochastic)")
+                st.dataframe(dist_df)
+
+            # Show effective trading parameters
+            tcfg = cfg.get('trading', {})
+            st.caption(f"Params: max_position_size={tcfg.get('max_position_size', 0.1)}, fee={tcfg.get('transaction_cost', 0.001)}, slippage={tcfg.get('slippage', 0.0005)}")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Final Portfolio Value", format_currency(bt.get('final_portfolio_value', initial_balance)))
+            with col2:
+                st.metric("Total Return", format_percentage(bt.get('total_return', 0)))
+            with col3:
+                st.metric("Sharpe Ratio", f"{perf.get('sharpe_ratio', 0):.3f}")
+            with col4:
+                st.metric("Max Drawdown", format_percentage(perf.get('max_drawdown', 0)))
+
+            # Chart data
+            dates = pd.to_datetime(detailed.get('dates', []))
+            prices = pd.Series(detailed.get('prices', []), index=dates)
+            portfolio_values = pd.Series(detailed.get('portfolio_values', []), index=dates)
+
+            # Build benchmark
+            benchmark_values = None
+            if benchmark_comparison and not prices.empty:
+                base_price = prices.iloc[0]
+                if base_price:
+                    benchmark_values = (prices / base_price) * float(initial_balance)
+
+            # Signals
+            buy_dates, buy_prices, sell_dates, sell_prices = [], [], [], []
+            for i, tr in enumerate(detailed.get('trades', [])):
+                if not tr or 'shares_traded' not in tr or i >= len(dates):
+                    continue
+                if tr['shares_traded'] > 0:
+                    buy_dates.append(dates[i])
+                    buy_prices.append(prices.iloc[i] if i < len(prices) else None)
+                elif tr['shares_traded'] < 0:
+                    sell_dates.append(dates[i])
+                    sell_prices.append(prices.iloc[i] if i < len(prices) else None)
+
+            # Price chart
+            st.subheader("📈 Price Chart with Trading Signals")
+            fig = go.Figure()
+            if not prices.empty:
+                fig.add_trace(go.Scatter(x=prices.index, y=prices.values, mode='lines', name=f'{selected_symbol} Price',
+                                         line=dict(color='#1f77b4', width=2)))
+            if buy_dates:
+                fig.add_trace(go.Scatter(x=buy_dates, y=buy_prices, mode='markers', name='Buy Signals',
+                                         marker=dict(symbol='triangle-up', size=12, color='#00ff00',
+                                                     line=dict(color='#008000', width=2))))
+            if sell_dates:
+                fig.add_trace(go.Scatter(x=sell_dates, y=sell_prices, mode='markers', name='Sell Signals',
+                                         marker=dict(symbol='triangle-down', size=12, color='#ff0000',
+                                                     line=dict(color='#800000', width=2))))
+            fig.update_layout(title=f"{selected_symbol} Price with AI Trading Signals", xaxis_title="Date",
+                              yaxis_title="Price ($)", height=600, legend=dict(x=0, y=1), hovermode='closest',
+                              showlegend=True, **get_plotly_theme())
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Portfolio performance
+            st.subheader("📊 Portfolio Performance")
+            fig2 = go.Figure()
+            if not portfolio_values.empty:
+                fig2.add_trace(go.Scatter(x=portfolio_values.index, y=portfolio_values.values, mode='lines',
+                                          name='AI Strategy', line=dict(color='blue', width=2)))
+            if benchmark_values is not None:
+                fig2.add_trace(go.Scatter(x=benchmark_values.index, y=benchmark_values.values, mode='lines',
+                                          name='Buy & Hold', line=dict(color='gray', width=2, dash='dash')))
+            fig2.update_layout(title="Portfolio Performance Comparison", xaxis_title="Date",
+                               yaxis_title="Portfolio Value ($)", **get_plotly_theme())
+            st.plotly_chart(fig2, use_container_width=True)
 
 @handle_errors
 def show_live_trading():

@@ -31,13 +31,20 @@ def is_port_in_use(port):
 def main():
     """Main function to run the Streamlit app."""
     
-    # Add src to path
+    # Add project root and src to path
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    src_path = os.path.join(current_dir, '..', 'src')
-    sys.path.insert(0, src_path)
-    
-    # Set environment variables
-    os.environ['PYTHONPATH'] = src_path
+    root_path = os.path.abspath(os.path.join(current_dir, '..'))
+    src_path = os.path.join(root_path, 'src')
+    for p in (root_path, src_path):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+    # Set environment variables for child process
+    existing_pyspath = os.environ.get('PYTHONPATH', '')
+    parts = [root_path, src_path]
+    if existing_pyspath:
+        parts.append(existing_pyspath)
+    os.environ['PYTHONPATH'] = os.pathsep.join(parts)
     
     # Path to the main app
     app_path = os.path.join(current_dir, 'app.py')

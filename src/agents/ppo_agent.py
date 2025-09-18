@@ -267,9 +267,15 @@ class PPOAgent:
         # Device optimization - define device first
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Set number of threads for CPU operations
-        torch.set_num_threads(self.num_threads)
-        torch.set_num_interop_threads(self.num_threads)
+        # Set number of threads for CPU operations (safe)
+        try:
+            torch.set_num_threads(self.num_threads)
+        except Exception as e:
+            logger.info(f"set_num_threads skipped: {e}")
+        try:
+            torch.set_num_interop_threads(self.num_threads)
+        except Exception as e:
+            logger.info(f"set_num_interop_threads skipped: {e}")
         
         # Additional CPU optimization settings
         if self.device.type == 'cpu':
@@ -755,11 +761,74 @@ class PPOAgent:
     def load(self, filepath: str):
         """Load model."""
         checkpoint = torch.load(filepath, map_location=self.device)
-        self.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
-        self.value_net.load_state_dict(checkpoint['value_net_state_dict'])
-        self.policy_optimizer.load_state_dict(checkpoint['policy_optimizer_state_dict'])
-        self.value_optimizer.load_state_dict(checkpoint['value_optimizer_state_dict'])
-        logger.info(f"Model loaded from {filepath}")
+
+        # Load policy network
+        loaded_policy = False
+        if isinstance(checkpoint, dict) and 'policy_net_state_dict' in checkpoint:
+            self.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
+            loaded_policy = True
+        elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            try:
+                self.policy_net.load_state_dict(checkpoint['state_dict'], strict=True)
+                loaded_policy = True
+            except Exception:
+                try:
+                    self.policy_net.load_state_dict(checkpoint['state_dict'], strict=False)
+                    loaded_policy = True
+                    logger.warning("Policy network loaded from 'state_dict' with strict=False.")
+                except Exception as e:
+                    logger.error(f"Failed to load policy network from 'state_dict': {e}")
+        else:
+            # Fallback: try treating checkpoint as a plain state dict
+            try:
+                self.policy_net.load_state_dict(checkpoint, strict=True)
+                loaded_policy = True
+            except Exception:
+                try:
+                    self.policy_net.load_state_dict(checkpoint, strict=False)
+                    loaded_policy = True
+                    logger.warning("Policy network loaded with strict=False due to key/shape mismatch.")
+                except Exception as e:
+                    logger.error(f"Failed to load policy network: {e}")
+
+        # Load value network
+        loaded_value = False
+        if isinstance(checkpoint, dict) and 'value_net_state_dict' in checkpoint:
+            self.value_net.load_state_dict(checkpoint['value_net_state_dict'])
+            loaded_value = True
+        else:
+            # No separate value dict in checkpoint; skip or attempt fallback only if same dict applies
+            if not loaded_policy:
+                # If policy didn't load from raw, try the same fallback for value
+                try:
+                    self.value_net.load_state_dict(checkpoint, strict=True)
+                    loaded_value = True
+                except Exception:
+                    try:
+                        self.value_net.load_state_dict(checkpoint, strict=False)
+                        loaded_value = True
+                        logger.warning("Value network loaded with strict=False due to key/shape mismatch.")
+                    except Exception as e:
+                        logger.warning(f"No value network state found in checkpoint: {e}")
+
+        # Load optimizers if present
+        if isinstance(checkpoint, dict) and 'policy_optimizer_state_dict' in checkpoint:
+            try:
+                self.policy_optimizer.load_state_dict(checkpoint['policy_optimizer_state_dict'])
+            except Exception as e:
+                logger.warning(f"Could not load policy optimizer state: {e}")
+        else:
+            logger.info("No policy optimizer state found in checkpoint; continuing without it.")
+        
+        if isinstance(checkpoint, dict) and 'value_optimizer_state_dict' in checkpoint:
+            try:
+                self.value_optimizer.load_state_dict(checkpoint['value_optimizer_state_dict'])
+            except Exception as e:
+                logger.warning(f"Could not load value optimizer state: {e}")
+        else:
+            logger.info("No value optimizer state found in checkpoint; continuing without it.")
+        
+        logger.info(f"Model loaded from {filepath} (policy loaded: {loaded_policy}, value loaded: {loaded_value})")
     
     def get_training_stats(self) -> Dict[str, float]:
         """Get recent training statistics."""

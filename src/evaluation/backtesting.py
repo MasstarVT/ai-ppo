@@ -31,7 +31,8 @@ class Backtester:
         data: pd.DataFrame, 
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        initial_balance: float = 10000
+        initial_balance: float = 10000,
+        deterministic: bool = True
     ) -> Dict[str, Any]:
         """
         Run comprehensive backtest on historical data.
@@ -79,7 +80,7 @@ class Backtester:
             step = 0
             while not env.done and step < len(test_data) - 1:
                 # Get action from agent (deterministic)
-                action, _, _ = agent.get_action(obs, deterministic=True)
+                action, _, _ = agent.get_action(obs, deterministic=deterministic)
                 
                 # Execute action
                 obs, reward, done, info = env.step(action)
@@ -100,10 +101,9 @@ class Backtester:
                 
                 step += 1
             
-            # Calculate performance metrics
-            returns_series = pd.Series(backtest_results['returns'], index=backtest_results['dates'])
-            daily_returns = returns_series.pct_change().dropna()
-            
+            # Calculate performance metrics based on portfolio value changes
+            portfolio_series = pd.Series(backtest_results['portfolio_values'], index=backtest_results['dates'])
+            daily_returns = portfolio_series.pct_change().dropna()
             performance_metrics = calculate_performance_metrics(daily_returns)
             
             # Additional backtest metrics
@@ -112,13 +112,20 @@ class Backtester:
                                 if t.get('shares_traded', 0) != 0 and 
                                 t.get('total_value_after', 0) > t.get('total_value_before', 0)])
             
+            # Compute total return using initial balance as baseline
+            total_return_calc = 0.0
+            if backtest_results['portfolio_values']:
+                pvn = backtest_results['portfolio_values'][-1]
+                if initial_balance > 0:
+                    total_return_calc = (pvn - initial_balance) / initial_balance
+
             backtest_metrics = {
                 'start_date': backtest_results['dates'][0] if backtest_results['dates'] else None,
                 'end_date': backtest_results['dates'][-1] if backtest_results['dates'] else None,
                 'initial_balance': initial_balance,
                 'final_balance': backtest_results['balances'][-1] if backtest_results['balances'] else initial_balance,
                 'final_portfolio_value': backtest_results['portfolio_values'][-1] if backtest_results['portfolio_values'] else initial_balance,
-                'total_return': backtest_results['returns'][-1] if backtest_results['returns'] else 0,
+                'total_return': total_return_calc,
                 'total_trades': total_trades,
                 'winning_trades': winning_trades,
                 'win_rate': winning_trades / total_trades if total_trades > 0 else 0,
@@ -150,22 +157,40 @@ class Backtester:
     def _filter_data_by_date(self, data: pd.DataFrame, start_date: Optional[str], end_date: Optional[str]) -> pd.DataFrame:
         """Filter data by date range."""
         filtered_data = data.copy()
-        
-        if start_date:
-            filtered_data = filtered_data[filtered_data.index >= start_date]
-        
-        if end_date:
-            filtered_data = filtered_data[filtered_data.index <= end_date]
-        
-        return filtered_data
+        try:
+            idx = filtered_data.index
+            tz = getattr(idx, 'tz', None)
+            start_ts = None
+            end_ts = None
+            if start_date:
+                start_ts = pd.Timestamp(start_date)
+            if end_date:
+                # make end inclusive to the end of day
+                end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+            if tz is not None:
+                if start_ts is not None and start_ts.tz is None:
+                    start_ts = start_ts.tz_localize(tz)
+                if end_ts is not None and end_ts.tz is None:
+                    end_ts = end_ts.tz_localize(tz)
+            # Apply filters safely
+            if start_ts is not None:
+                filtered_data = filtered_data[idx >= start_ts]
+                idx = filtered_data.index
+            if end_ts is not None:
+                filtered_data = filtered_data[idx <= end_ts]
+            return filtered_data
+        except Exception as e:
+            logger.warning(f"Date filtering fallback due to: {e}")
+            return filtered_data
     
     def _calculate_buy_and_hold_return(self, data: pd.DataFrame) -> float:
         """Calculate buy and hold return for comparison."""
         if len(data) < 2:
             return 0
-        
-        start_price = data['Close'].iloc[0]
-        end_price = data['Close'].iloc[-1]
+        # Prefer raw close price if present (pre-normalization)
+        price_col = 'Close_raw' if 'Close_raw' in data.columns else 'Close'
+        start_price = data[price_col].iloc[0]
+        end_price = data[price_col].iloc[-1]
         
         return (end_price - start_price) / start_price
     
