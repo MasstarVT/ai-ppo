@@ -184,6 +184,7 @@ def create_default_config() -> Dict[str, Any]:
             'timeframe': '1h',
             'initial_balance': 10000,
             'max_position_size': 0.1,
+            'max_position_days': 30,
             'transaction_cost': 0.001,
             'slippage': 0.0005
         },

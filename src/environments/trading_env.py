@@ -141,8 +141,13 @@ class TradingEnvironment(gym.Env):
         # Trading parameters
         self.initial_balance = config.get('trading', {}).get('initial_balance', 10000)
         self.max_position_size = config.get('trading', {}).get('max_position_size', 0.1)
+        self.max_position_days = config.get('trading', {}).get('max_position_days', 30)
         self.transaction_cost = config.get('trading', {}).get('transaction_cost', 0.001)
         self.slippage = config.get('trading', {}).get('slippage', 0.0005)
+        
+        # Position tracking for timeout
+        self.position_start_step = None  # When current position started
+        self.position_timeout_penalty = 0.01  # Penalty for forced position close
         
         # Initialize portfolio
         self.portfolio = Portfolio(self.initial_balance, self.transaction_cost, self.slippage)
@@ -284,11 +289,37 @@ class TradingEnvironment(gym.Env):
         row = self.data.iloc[self.episode_start_idx + self.current_step]
         current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
         
+        # Check for position timeout and force close if needed
+        force_close = False
+        if self.portfolio.shares > 0 and self.position_start_step is not None:
+            # Calculate position duration in steps (assuming hourly timeframe)
+            steps_in_position = self.current_step - self.position_start_step
+            # Convert max_position_days to steps (24 hours * max_days for hourly data)
+            max_steps = self.max_position_days * 24
+            
+            if steps_in_position >= max_steps:
+                # Force close position due to timeout
+                action = TradingAction.SELL
+                force_close = True
+        
+        # Track position start/end
+        if action == TradingAction.BUY and self.portfolio.shares == 0:
+            # Starting a new position
+            self.position_start_step = self.current_step
+        elif action == TradingAction.SELL and self.portfolio.shares > 0:
+            # Closing position
+            self.position_start_step = None
+        
         # Execute trade
         trade_info = self.portfolio.execute_trade(action, current_price, self.max_position_size)
         
         # Calculate reward
         reward = self._calculate_reward(action, trade_info)
+        
+        # Apply penalty for forced position close
+        if force_close:
+            reward -= self.position_timeout_penalty
+            trade_info['force_close'] = True
         
         # Update episode tracking
         # Update last portfolio value for next step's incremental reward
@@ -331,6 +362,7 @@ class TradingEnvironment(gym.Env):
         self.done = False
         self.episode_returns = []
         self._last_portfolio_value = self.initial_balance
+        self.position_start_step = None  # Reset position tracking
         
         # Set episode start index
         if start_idx is not None:

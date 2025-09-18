@@ -618,15 +618,52 @@ def get_light_theme_css():
 
 # CSS will be applied in main() after theme initialization
 
+# Settings persistence functions
+def load_user_settings():
+    """Load user settings from file."""
+    settings_file = os.path.join(os.path.dirname(__file__), 'user_settings.json')
+    try:
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load user settings: {e}")
+    return {}
+
+def save_user_settings(settings):
+    """Save user settings to file."""
+    settings_file = os.path.join(os.path.dirname(__file__), 'user_settings.json')
+    try:
+        os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+        with open(settings_file, 'w') as f:
+            json.dump(settings, f, indent=2)
+        logger.info("User settings saved successfully")
+    except Exception as e:
+        logger.error(f"Failed to save user settings: {e}")
+
+def merge_with_user_settings(config):
+    """Merge configuration with saved user settings."""
+    user_settings = load_user_settings()
+    if user_settings:
+        # Deep merge user settings into config
+        for section, settings in user_settings.items():
+            if section in config and isinstance(config[section], dict) and isinstance(settings, dict):
+                config[section].update(settings)
+            else:
+                config[section] = settings
+    return config
+
 # Initialize session state
 if 'config' not in st.session_state:
     try:
-        st.session_state.config = create_default_config()
+        base_config = create_default_config()
+        # Load and merge user settings
+        st.session_state.config = merge_with_user_settings(base_config)
     except Exception as e:
         logger.error(f"Failed to create default config: {e}")
         # Minimal fallback config
         st.session_state.config = {
-            'trading': {'symbols': ['AAPL', 'BTC/USDT'], 'initial_balance': 10000},
+            'trading': {'symbols': ['AAPL', 'BTC/USDT'], 'initial_balance': 10000, 'max_position_days': 30},
             'ppo': {'learning_rate': 3e-4, 'n_steps': 2048},
             'training': {'total_timesteps': 100000}
         }
@@ -1170,6 +1207,15 @@ def show_configuration():
                 step=1
             )
             
+            max_position_days = st.slider(
+                "Max Position Duration (Days)",
+                min_value=1,
+                max_value=90,
+                value=st.session_state.config.get('trading', {}).get('max_position_days', 30),
+                step=1,
+                help="Maximum days to hold a position before force close"
+            )
+            
             transaction_cost = st.number_input(
                 "Transaction Cost (%)",
                 value=st.session_state.config.get('trading', {}).get('transaction_cost', 0.001) * 100,
@@ -1195,9 +1241,12 @@ def show_configuration():
                 'timeframe': timeframe,
                 'initial_balance': initial_balance,
                 'max_position_size': max_position_size / 100,
+                'max_position_days': max_position_days,
                 'transaction_cost': transaction_cost / 100,
                 'slippage': slippage / 100
             }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("Trading configuration saved!")
     
     with tab2:
@@ -1284,6 +1333,8 @@ def show_configuration():
                 'clip_range': clip_range,
                 'ent_coef': ent_coef
             }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("PPO configuration saved!")
     
     with tab3:
@@ -1332,6 +1383,8 @@ def show_configuration():
                 'max_leverage': max_leverage,
                 'position_concentration_limit': position_concentration / 100
             }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("Risk management configuration saved!")
     
     with tab4:
@@ -1365,6 +1418,8 @@ def show_configuration():
                 st.session_state.config['data_providers'] = {
                     provider: {'api_key': api_key}
                 }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("Data source configuration saved!")
     
     # Save all configuration to file
