@@ -531,20 +531,9 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
                         if timestep % 1000 == 0:  # Log occasionally
                             print(f"  Updated agent - Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
                     except AssertionError as e:
-                        # Buffer not full, use partial update
-                        training_stats = agent.update_partial(force_final=True)
+                        # Buffer not full, skip this update
                         if timestep % 1000 == 0:
-                            print(f"  Partial update - Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
-                elif agent.buffer.ptr >= agent.n_steps // 2 and timestep >= timesteps * 0.9:
-                    # Near end of training, do partial updates to prevent getting stuck
-                    try:
-                        # Finish current path before partial update
-                        agent.finish_episode(obs)
-                        training_stats = agent.update_partial(force_final=True)
-                        if timestep % 1000 == 0:
-                            print(f"  End-game partial update - Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
-                    except Exception as e:
-                        print(f"  Partial update failed: {e}")
+                            print(f"  Buffer not ready for update, skipping...")
                 
                 # Get action from agent
                 action, log_prob, value = agent.get_action(obs)
@@ -574,15 +563,6 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
                             f.flush()
                     except Exception:
                         pass  # Ignore file writing errors to prevent training interruption
-                    
-                # Force update near the end to prevent getting stuck
-                if timestep >= timesteps * 0.95 and agent.buffer.ptr > 0:
-                    if agent.buffer.ptr >= agent.batch_size:  # Use batch size instead of n_steps
-                        try:
-                            training_stats = agent.update_partial(force_final=True)
-                            print(f"  Forced update at {progress:.1f}% - Buffer size: {agent.buffer.ptr}")
-                        except Exception as e:
-                            print(f"  Forced update failed: {e}")
             
             # Finish episode
             agent.finish_episode(obs)
@@ -597,18 +577,27 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
         # Final update - always do this to handle any remaining data
         if agent.buffer.ptr > 0:
             print(f"  Final update - Buffer had {agent.buffer.ptr} experiences")
-            # Use partial update for final buffer state
+            # Use partial update for final buffer state (buffer is unlikely to be completely full)
             try:
-                if agent.buffer.ptr >= agent.batch_size:
-                    training_stats = agent.update()
-                else:
-                    training_stats = agent.update_partial(force_final=True)
+                # For final update, always use partial update since buffer may not be completely full
+                training_stats = agent.update_partial(force_final=True)
                 print(f"    Policy Loss: {training_stats.get('policy_loss', 0):.4f}")
             except Exception as e:
-                print(f"    Final update failed: {e}")
+                import traceback
+                print(f"    Final update failed: {type(e).__name__}: {str(e)}")
+                print(f"    Traceback: {traceback.format_exc()}")
                 training_stats = {'policy_loss': 0, 'value_loss': 0}
         
         print("[OK] Training completed!")
+        
+        # Write completion message to log file
+        try:
+            log_path = os.path.join(os.path.dirname(__file__), 'logs', 'training_debug.log')
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - Training completed successfully\n")
+                f.flush()
+        except Exception:
+            pass  # Ignore file writing errors
         
         # Save the model
         if save_path is None:

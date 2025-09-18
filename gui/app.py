@@ -847,7 +847,7 @@ def detect_active_training():
             # psutil not available, skip process-based detection
             pass
                 
-        # Check for recent log activity (within last 5 minutes)
+                # Check for recent log activity (within last 5 minutes)
         log_file = os.path.join(os.path.dirname(__file__), '..', 'logs', 'training_debug.log')
         if os.path.exists(log_file):
             stat = os.stat(log_file)
@@ -860,37 +860,48 @@ def detect_active_training():
                     with open(log_file, 'r') as f:
                         lines = f.readlines()
                         
-                    # First check if training was recently stopped or failed
+                    # First check if training was recently completed successfully
                     for line in reversed(lines[-50:]):  # Check last 50 lines
-                        if any(keyword in line for keyword in ['TRAINING STOPPED', 'TRAINING FAILED', 'Training completed', 'stopped by user']):
-                            # Check if this stop/fail event is recent (within last 5 minutes)
+                        if any(keyword in line for keyword in ['Training completed successfully', 'TRAINING STOPPED', 'TRAINING FAILED', 'stopped by user']):
+                            # Check if this completion event is recent (within last 10 minutes)
                             import re
                             timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
                             if timestamp_match:
                                 log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
-                                if current_time - log_time.timestamp() < 300:
-                                    # Training was recently stopped/failed, so it's not active
+                                if current_time - log_time.timestamp() < 600:  # 10 minutes
+                                    # Training was recently completed/stopped, so it's not active
                                     return False
                     
-                    # Now look for recent active progress lines (only if no recent stop/fail)
+                    # Check for completion by looking for 100% progress followed by no more progress
+                    completion_found = False
+                    last_progress_time = None
+                    
+                    for line in reversed(lines[-30:]):  # Check last 30 lines
+                        import re
+                        # Look for 100% completion steps
+                        if 'Step' in line and '(100.0%)' in line:
+                            timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
+                            if timestamp_match:
+                                log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
+                                completion_found = True
+                                break
+                    
+                    if completion_found:
+                        # If we found 100% completion, training is not active
+                        return False
+                    
+                    # Now look for recent active progress lines (only if no completion found)
                     for line in reversed(lines[-20:]):  # Check last 20 lines
-                        if any(keyword in line for keyword in ['Step', 'Episode']) and '%' in line:
-                            # Check if this progress line is recent and not followed by a stop
+                        if any(keyword in line for keyword in ['Step', 'Episode']) and '%' in line and '100.0%' not in line:
+                            # Check if this progress line is recent and not at 100%
                             import re
                             timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
                             if timestamp_match:
                                 log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
                                 if current_time - log_time.timestamp() < 120:  # Only very recent (2 minutes)
-                                    # Check if there's a stop message after this progress line
-                                    line_idx = lines.index(line) if line in lines else -1
-                                    if line_idx >= 0:
-                                        # Check subsequent lines for stop messages
-                                        subsequent_lines = lines[line_idx+1:]
-                                        stop_found = any(keyword in sub_line for sub_line in subsequent_lines 
-                                                       for keyword in ['TRAINING STOPPED', 'TRAINING FAILED', 'stopped by user'])
-                                        if not stop_found:
-                                            st.session_state.training_active = True
-                                            return True
+                                    # Found recent active progress (not at completion)
+                                    st.session_state.training_active = True
+                                    return True
                 except Exception:
                     pass
                     
