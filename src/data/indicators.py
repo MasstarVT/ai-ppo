@@ -29,7 +29,8 @@ class TechnicalIndicators:
         delta = data.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
+        # Prevent division by zero
+        rs = gain / (loss + 1e-10)
         rsi = 100 - (100 / (1 + rs))
         return rsi
     
@@ -58,7 +59,10 @@ class TechnicalIndicators:
         """Stochastic Oscillator."""
         lowest_low = low.rolling(window=k_period).min()
         highest_high = high.rolling(window=k_period).max()
-        k_percent = 100 * ((close - lowest_low) / (highest_high - lowest_low))
+        # Prevent division by zero
+        range_diff = highest_high - lowest_low
+        range_diff = range_diff.where(range_diff != 0, 1e-10)
+        k_percent = 100 * ((close - lowest_low) / range_diff)
         d_percent = k_percent.rolling(window=d_period).mean()
         return k_percent, d_percent
     
@@ -127,12 +131,16 @@ class TechnicalIndicators:
             result_df['Log_Returns'] = np.log(df['Close'] / df['Close'].shift(1))
             result_df['Volatility'] = result_df['Returns'].rolling(window=20).std()
             
-            # Price position relative to Bollinger Bands
-            result_df['BB_Position'] = (df['Close'] - bb_lower) / (bb_upper - bb_lower)
+            # Price position relative to Bollinger Bands (prevent division by zero)
+            bb_range = bb_upper - bb_lower
+            bb_range = bb_range.where(bb_range != 0, 1e-10).infer_objects(copy=False)
+            result_df['BB_Position'] = (df['Close'] - bb_lower) / bb_range
             
             # Volume features
             result_df['Volume_SMA'] = TechnicalIndicators.sma(df['Volume'], 20)
-            result_df['Volume_Ratio'] = df['Volume'] / result_df['Volume_SMA']
+            # Prevent division by zero for volume ratio
+            volume_sma_safe = result_df['Volume_SMA'].where(result_df['Volume_SMA'] != 0, 1e-10).infer_objects(copy=False)
+            result_df['Volume_Ratio'] = df['Volume'] / volume_sma_safe
             
             logger.info(f"Calculated technical indicators. Shape: {result_df.shape}")
             return result_df

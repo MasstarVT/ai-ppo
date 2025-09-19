@@ -203,17 +203,42 @@ class TradingEnvironment(gym.Env):
         end_idx = self.episode_start_idx + self.current_step + 1
         start_idx = max(0, end_idx - self.lookback_window)
         
+        # Validate indices
+        if end_idx > len(self.data):
+            logger.error(f"end_idx {end_idx} exceeds data length {len(self.data)}")
+            end_idx = len(self.data)
+        
+        if start_idx >= end_idx:
+            logger.error(f"Invalid slice: start_idx {start_idx} >= end_idx {end_idx}")
+            start_idx = max(0, end_idx - 1)
+        
         # Get market data (exclude Close_raw)
-        market_data = self.data[self.feature_columns].iloc[start_idx:end_idx].values
+        try:
+            market_data = self.data[self.feature_columns].iloc[start_idx:end_idx].values
+        except IndexError as e:
+            logger.error(f"IndexError in market data slice [{start_idx}:{end_idx}]: {e}")
+            # Fallback: use last available data point
+            market_data = self.data[self.feature_columns].iloc[-1:].values
         
         # Pad if we don't have enough historical data
         if len(market_data) < self.lookback_window:
-            padding = np.zeros((self.lookback_window - len(market_data), market_data.shape[1]))
+            padding_rows = self.lookback_window - len(market_data)
+            if len(market_data) > 0:
+                padding = np.tile(market_data[0], (padding_rows, 1))
+            else:
+                # Emergency fallback: zeros
+                padding = np.zeros((padding_rows, len(self.feature_columns)))
             market_data = np.vstack([padding, market_data])
         
         # Get current price for portfolio calculations (prefer raw)
-        row = self.data.iloc[end_idx - 1]
-        current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
+        try:
+            row = self.data.iloc[min(end_idx - 1, len(self.data) - 1)]
+            current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
+        except IndexError:
+            logger.error(f"Cannot access data at index {end_idx - 1}")
+            # Fallback to last price
+            last_row = self.data.iloc[-1]
+            current_price = last_row['Close_raw'] if 'Close_raw' in self.data.columns else last_row['Close']
         
         # Portfolio state
         portfolio_state = np.array([
@@ -233,7 +258,12 @@ class TradingEnvironment(gym.Env):
     
     def _calculate_reward(self, action: int, trade_info: Dict) -> float:
         """Calculate reward for the current step."""
-        row = self.data.iloc[self.episode_start_idx + self.current_step]
+        # Safe index access
+        current_idx = self.episode_start_idx + self.current_step
+        if current_idx >= len(self.data):
+            current_idx = len(self.data) - 1
+            
+        row = self.data.iloc[current_idx]
         current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
         
         # Compute portfolio values
@@ -285,8 +315,13 @@ class TradingEnvironment(gym.Env):
         if self.done:
             raise ValueError("Episode has ended. Call reset() to start a new episode.")
         
-        # Get current price
-        row = self.data.iloc[self.episode_start_idx + self.current_step]
+        # Get current price with bounds checking
+        current_idx = self.episode_start_idx + self.current_step
+        if current_idx >= len(self.data):
+            logger.error(f"Step index {current_idx} exceeds data length {len(self.data)}")
+            current_idx = len(self.data) - 1
+        
+        row = self.data.iloc[current_idx]
         current_price = row['Close_raw'] if 'Close_raw' in self.data.columns else row['Close']
         
         # Check for position timeout and force close if needed
@@ -366,11 +401,32 @@ class TradingEnvironment(gym.Env):
         
         # Set episode start index
         if start_idx is not None:
-            self.episode_start_idx = start_idx
-        else:
+            # Validate the provided start index
+            min_start = self.lookback_window
+            max_end = len(self.data) - 1
+            max_start = max_end - self.max_episode_steps
+            
+            if start_idx < min_start or start_idx > max_start:
+                logger.warning(f"Invalid start_idx {start_idx}, using random start")
+                start_idx = None
+            else:
+                self.episode_start_idx = start_idx
+        
+        if start_idx is None:
             # Random start point, ensuring we have enough data for episode
-            max_start = len(self.data) - self.max_episode_steps - self.lookback_window
-            self.episode_start_idx = np.random.randint(self.lookback_window, max(self.lookback_window + 1, max_start))
+            min_start = self.lookback_window
+            required_length = self.max_episode_steps + self.lookback_window
+            
+            if len(self.data) < required_length:
+                logger.warning(f"Insufficient data: {len(self.data)} < {required_length}")
+                # Use what data we have, but adjust episode length
+                self.episode_start_idx = min_start
+                adjusted_max_steps = max(1, len(self.data) - min_start - 1)
+                logger.warning(f"Reducing max_episode_steps from {self.max_episode_steps} to {adjusted_max_steps}")
+                self.max_episode_steps = adjusted_max_steps
+            else:
+                max_start = len(self.data) - self.max_episode_steps - 1
+                self.episode_start_idx = np.random.randint(min_start, max(min_start + 1, max_start))
         
         logger.debug(f"Reset environment. Episode start: {self.episode_start_idx}")
         

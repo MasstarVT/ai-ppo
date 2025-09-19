@@ -1017,7 +1017,10 @@ def main():
         
         # Check if models exist
         model_dir = "models"
-        models_exist = os.path.exists(model_dir) and len([f for f in os.listdir(model_dir) if f.endswith('.pt')]) > 0
+        try:
+            models_exist = os.path.exists(model_dir) and len([f for f in os.listdir(model_dir) if f.endswith('.pt')]) > 0
+        except (OSError, PermissionError):
+            models_exist = False
         
         
         if models_exist:
@@ -1526,19 +1529,32 @@ def show_data_analysis():
             
             st.plotly_chart(fig, width="stretch")
             
-            # Statistics
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Current Price", f"${data['Close'].iloc[-1]:.2f}")
-            
-            with col2:
-                total_return = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
-                st.metric("Total Return", f"{total_return:.1f}%")
-            
-            with col3:
-                volatility = data['Close'].pct_change().std() * np.sqrt(252) * 100
-                st.metric("Volatility (Annual)", f"{volatility:.1f}%")
+            # Statistics - with safety checks
+            if len(data) > 0:
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Current Price", f"${data['Close'].iloc[-1]:.2f}")
+                
+                with col2:
+                    # Protect against division by zero
+                    start_price = data['Close'].iloc[0]
+                    end_price = data['Close'].iloc[-1]
+                    if start_price > 0:
+                        total_return = (end_price / start_price - 1) * 100
+                    else:
+                        total_return = 0.0
+                    st.metric("Total Return", f"{total_return:.1f}%")
+                
+                with col3:
+                    returns = data['Close'].pct_change().dropna()
+                    if len(returns) > 0:
+                        volatility = returns.std() * np.sqrt(252) * 100
+                    else:
+                        volatility = 0.0
+                    st.metric("Volatility (Annual)", f"{volatility:.1f}%")
+            else:
+                st.warning("No data available for statistics")
             
             with col4:
                 avg_volume = data['Volume'].mean()
@@ -1553,7 +1569,10 @@ def get_available_models():
     model_dir = os.path.join(project_root, "models")
     
     if os.path.exists(model_dir):
-        return [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+        try:
+            return [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+        except (OSError, PermissionError):
+            return []
     return []
 
 @handle_errors
@@ -1986,7 +2005,7 @@ def show_training():
                             
                             if training_mode == 'continuous':
                                 # For continuous training, show activity indicators
-                                if continuous_activity:
+                                if continuous_activity and len(continuous_activity) > 0:
                                     continuous_activity.sort(key=lambda x: x[2], reverse=True)
                                     activity_type, value, timestamp = continuous_activity[0]
                                     
@@ -2008,7 +2027,7 @@ def show_training():
                                         
                             else:
                                 # Regular training with step-based progress
-                                if progress_lines:
+                                if progress_lines and len(progress_lines) > 0:
                                     # Sort by timestamp and get the latest
                                     progress_lines.sort(key=lambda x: x[3], reverse=True)
                                     current_step, total_steps, progress_pct, _ = progress_lines[0]
@@ -3034,7 +3053,10 @@ def show_backtesting():
     """Show backtesting interface."""
     st.title("📊 Backtesting")
     # Model selection
-    model_files = [f for f in os.listdir("models")] if os.path.isdir("models") else []
+    try:
+        model_files = [f for f in os.listdir("models")] if os.path.isdir("models") else []
+    except (OSError, PermissionError):
+        model_files = []
     model_files = [f for f in model_files if f.endswith('.pt')]
     if not model_files:
         st.warning("No trained models found. Please train a model first.")
@@ -3445,7 +3467,11 @@ ai-ppo/
     
     # Get all model files
     try:
-        all_files = os.listdir(model_dir)
+        try:
+            all_files = os.listdir(model_dir)
+        except (OSError, PermissionError):
+            st.error("Unable to access model directory")
+            return
         model_files = [f for f in all_files if f.endswith('.pt')]
         
         st.success(f"✅ Models directory found: {len(all_files)} files total")
