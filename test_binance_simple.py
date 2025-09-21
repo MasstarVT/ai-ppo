@@ -11,7 +11,7 @@ def test_binance_simple():
     """Simple test to see what Binance returns for different periods."""
     
     try:
-        from binance.client import Client as BinanceClient
+        from binance.client import Client as BinanceClient  # type: ignore[import]
     except ImportError:
         print("❌ Binance library not available")
         return

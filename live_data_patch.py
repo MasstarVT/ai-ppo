@@ -1,4 +1,7 @@
 # Patch file to fix live market data
+import streamlit as st
+import pandas as pd
+
 # Get real-time market data
 symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT']
 
