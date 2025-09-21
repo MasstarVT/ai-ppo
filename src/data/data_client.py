@@ -20,10 +20,10 @@ import os
 
 # Import Alpaca clients
 try:
-    from alpaca.trading.client import TradingClient
-    from alpaca.data.historical import StockHistoricalDataClient
-    from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
-    from alpaca.data.timeframe import TimeFrame
+    from alpaca.trading.client import TradingClient  # type: ignore[import]
+    from alpaca.data.historical import StockHistoricalDataClient  # type: ignore[import]
+    from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest  # type: ignore[import]
+    from alpaca.data.timeframe import TimeFrame  # type: ignore[import]
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
@@ -31,7 +31,7 @@ except ImportError:
 
 # Import Binance client
 try:
-    from binance.client import Client as BinanceClient
+    from binance.client import Client as BinanceClient  # type: ignore[import]
     BINANCE_AVAILABLE = True
 except ImportError:
     BINANCE_AVAILABLE = False
@@ -190,18 +190,28 @@ class YFinanceProvider(DataProvider):
     
     def _normalize_symbol(self, symbol: str) -> str:
         """Normalize symbol for yfinance (convert crypto pairs if needed)."""
+        # Normalize case and strip whitespace
+        raw = symbol.strip()
         # Check if it's a crypto pair that needs conversion
-        if symbol in self.crypto_symbols:
-            normalized = self.crypto_symbols[symbol]
+        if raw in self.crypto_symbols:
+            normalized = self.crypto_symbols[raw]
             logger.info(f"Converting crypto symbol {symbol} to {normalized}")
             return normalized
+        # Handle Binance-style symbols like BTCUSDT, ETHUSD
+        upper = raw.upper()
+        if upper.endswith('USDT') and '/' not in upper and '-' not in upper:
+            base = upper[:-4]
+            return f"{base}-USD"
+        if upper.endswith('USD') and '/' not in upper and '-' not in upper:
+            base = upper[:-3]
+            return f"{base}-USD"
         
         # Check if it's already a yfinance crypto format (e.g., BTC-USD)
-        if '-USD' in symbol:
-            return symbol
+        if '-USD' in upper:
+            return upper
             
         # For regular stocks, return as-is
-        return symbol
+        return raw
     
     @cache_data(ttl_hours=1)  # Cache data for 1 hour
     @rate_limit(max_calls_per_minute=120)  # Increased rate limit

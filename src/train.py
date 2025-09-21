@@ -14,10 +14,10 @@ from datetime import datetime
 # Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from data import DataClient, TechnicalIndicators, prepare_features
-from environments import TradingEnvironment
-from agents import PPOAgent
-from utils import (
+from src.data import DataClient, TechnicalIndicators, prepare_features
+from src.environments import TradingEnvironment
+from src.agents import PPOAgent
+from src.utils import (
     ConfigManager, setup_logging, set_seed, Timer, ProgressTracker,
     calculate_performance_metrics, format_currency, format_percentage,
     log_system_info
