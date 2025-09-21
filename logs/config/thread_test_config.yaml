@@ -1,0 +1,44 @@
+data:
+  symbol: "AAPL"
+  start_date: "2020-01-01"
+  end_date: null
+  timeframe: "1d"
+  api_key: null
+  
+training:
+  total_timesteps: 1000
+  
+ppo:
+  learning_rate: 0.0003
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  gamma: 0.99
+  gae_lambda: 0.95
+  n_steps: 512
+  batch_size: 64
+  n_epochs: 10
+
+network:
+  policy_layers: [512, 512]
+  value_layers: [512, 512]
+  activation: "relu"
+  dropout: 0.0
+
+performance:
+  num_threads: 16
+  use_mixed_precision: true
+  pin_memory: true
+  non_blocking: true
+  compile_model: false
+
+environment:
+  initial_balance: 10000
+  transaction_cost: 0.001
+  max_position_size: 1.0
+  reward_scaling: 1.0
+
+logging:
+  level: "INFO"
+  save_logs: true

@@ -1,0 +1,54 @@
+# Auto-Configuration for Alpaca Data Source
+# This file automatically sets up Alpaca as your data source using .env credentials
+
+data_source:
+  provider: "alpaca"
+
+# Alpaca will automatically use credentials from .env file:
+# ALPACA_API_KEY=your_key_here
+# ALPACA_SECRET_KEY=your_secret_here
+
+data_providers:
+  alpaca:
+    paper: true  # Paper trading mode (safe for testing)
+
+# Trading Configuration
+trading:
+  symbols: ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+  timeframe: "5m"
+  initial_balance: 100000
+  max_position_size: 0.1
+  transaction_cost: 0.001
+  slippage: 0.0005
+
+# PPO Configuration
+ppo:
+  learning_rate: 3e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+# Network Architecture
+network:
+  policy_layers: [256, 256]
+  value_layers: [256, 256]
+  activation: "tanh"
+
+# Training Configuration
+training:
+  total_timesteps: 1000000
+  eval_freq: 10000
+  save_freq: 50000
+  
+# Risk Management
+risk_management:
+  stop_loss: 0.02
+  take_profit: 0.04
+  max_drawdown: 0.1
+  position_concentration_limit: 0.1

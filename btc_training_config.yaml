@@ -1,0 +1,58 @@
+trading:
+  symbols: ['BTCUSDT']
+  timeframe: '5m'
+  initial_balance: 10000
+  max_position_size: 0.1
+  max_position_days: 30
+  transaction_cost: 0.001
+  slippage: 0.0005
+
+ppo:
+  learning_rate: 3e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+network:
+  policy_layers: [256, 256]
+  value_layers: [256, 256]
+  activation: 'tanh'
+
+training:
+  total_timesteps: 100000
+  data_period: '1y'
+  eval_freq: 10000
+  n_eval_episodes: 10
+  save_freq: 50000
+  log_interval: 1000
+
+environment:
+  lookback_window: 50
+  normalize_observations: true
+  reward_scaling: 1.0
+  max_episode_steps: 1000
+
+indicators:
+  sma_periods: [10, 20, 50]
+  ema_periods: [12, 26]
+  rsi_period: 14
+  macd_periods: [12, 26, 9]
+  bollinger_period: 20
+  bollinger_std: 2
+
+logging:
+  level: 'INFO'
+  log_to_file: true
+  use_tensorboard: true
+  use_wandb: false
+
+paths:
+  data_dir: 'data'
+  model_dir: 'models'
+  log_dir: 'logs'

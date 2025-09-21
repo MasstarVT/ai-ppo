@@ -26,6 +26,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Ensure project root and src are on path and import core components
+ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SRC_PATH = os.path.join(ROOT_PATH, 'src')
+for _p in (ROOT_PATH, SRC_PATH):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    # Prefer package-style imports
+    from src.data import DataClient, prepare_features
+    from src.environments import TradingEnvironment
+    from src.agents import PPOAgent
+    from src.evaluation.backtesting import Backtester
+    from src.utils import ConfigManager, create_default_config, format_currency, format_percentage
+    from streamlit_option_menu import option_menu
+except Exception as _e:
+    # Defer errors to UI; some pages may still work
+    logger.warning(f"Optional imports failed (some features may be unavailable): {_e}")
+
+# Basic error handler decorator used across views
+def handle_errors(fn):
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            st.error(f"Error: {e}")
+            logger.exception(e)
+            return None
+    return wrapper
+
+# Theme helpers expected by the UI
+def get_theme_css():
+    theme = st.session_state.get('theme', 'dark')
+    if theme not in ('dark', 'light'):
+        theme = 'dark'
+    return get_dark_theme_css() if theme == 'dark' else get_light_theme_css()
+
+def get_plotly_theme():
+    theme = st.session_state.get('theme', 'dark')
+    return dict(template='plotly_dark') if theme == 'dark' else dict(template='plotly_white')
+
+# Minimal system status gate to avoid blocking UI if not defined elsewhere
+def show_system_status():
+    return True
+
 # Global flags to prevent repeated initialization messages
 _GUI_ALREADY_INITIALIZED = False
 _YAML_LOGGED = False
@@ -45,236 +90,6 @@ def is_first_gui_run():
         st.session_state.gui_session_started = True
         return True
     return False
-
-# Only show essential startup messages on first run per session
-if is_first_gui_run():
-    print("📊 Starting AI PPO Trading GUI...")
-    logger.info("GUI Application Starting")
-
-# Add src to path and import external dependencies
-# Use absolute path to ensure it works regardless of working directory
-gui_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(gui_dir)
-src_path = os.path.join(project_root, 'src')
-
-# Add src to path if not already there
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-# Debug: Print path information on first run
-if is_first_gui_run():
-    print(f"🔧 GUI Directory: {gui_dir}")
-    print(f"🔧 Project Root: {project_root}")
-    print(f"🔧 Src Path: {src_path}")
-    print(f"🔧 Src Path Exists: {os.path.exists(src_path)}")
-
-from streamlit_option_menu import option_menu
-from st_aggrid import AgGrid, GridOptionsBuilder
-
-_SYSTEM_READY_LOGGED = False
-
-# Import trading system components
-SYSTEM_READY = False
-IMPORT_ERROR = None
-
-# Test yaml import first (only show message on first run)
-try:
-    import yaml
-    if not _YAML_LOGGED and 'yaml_imported_logged' not in st.session_state:
-        print("✅ YAML imported")
-        st.session_state.yaml_imported_logged = True
-        _YAML_LOGGED = True
-except ImportError as e:
-    print(f"❌ YAML import failed: {e}")
-    st.error(f"❌ YAML import failed: {e}")
-    st.info("💡 Please install PyYAML: `pip install PyYAML`")
-    IMPORT_ERROR = f"YAML import error: {e}"
-
-# Load components (only show message on first run)
-if 'components_loading_logged' not in st.session_state:
-    print("🔄 Loading components...")
-    st.session_state.components_loading_logged = True
-
-try:
-    from data import DataClient, prepare_features
-    from environments import TradingEnvironment
-    from agents import PPOAgent
-    from evaluation.backtesting import Backtester
-    from utils import ConfigManager, create_default_config, format_currency, format_percentage
-    
-    if 'core_components_logged' not in st.session_state:
-        print("✅ Core components loaded")
-        st.session_state.core_components_logged = True
-    
-    # Try to import training manager (requires torch/numpy)
-    try:
-        from utils import training_manager, BackgroundTrainingManager, NetworkAnalyzer
-        TRAINING_MANAGER_AVAILABLE = True
-        if 'training_manager_logged' not in st.session_state:
-            print("✅ Background training manager available")
-            st.session_state.training_manager_logged = True
-    except ImportError:
-        TRAINING_MANAGER_AVAILABLE = False
-        if 'training_manager_warning_logged' not in st.session_state:
-            print("ℹ️ Background training manager not available (requires torch/numpy)")
-            st.session_state.training_manager_warning_logged = True
-    
-    # Test basic functionality
-    _test_config = create_default_config()
-    SYSTEM_READY = True
-    if 'all_components_logged' not in st.session_state:
-        print("✅ All trading system components imported successfully")
-        st.session_state.all_components_logged = True
-
-except ImportError as e:
-    SYSTEM_READY = False
-    IMPORT_ERROR = f"Import error: {e}"
-    if 'import_error_logged' not in st.session_state:
-        st.error(f"⚠️ Error importing trading system components: {e}")
-        st.info("💡 Please ensure all dependencies are installed: `pip install -r requirements.txt`")
-        st.session_state.import_error_logged = True    # Show detailed error information
-    with st.expander("🔍 Detailed Error Information"):
-        st.code(f"Error: {e}")
-        st.code(f"Python Path: {sys.path}")
-        st.code(f"Current Directory: {os.getcwd()}")
-        st.code(f"Script Directory: {os.path.dirname(__file__)}")
-        
-        # Test specific imports
-        st.write("**Testing individual imports:**")
-        for module_name in ['yaml', 'utils', 'data', 'environments', 'agents', 'evaluation.backtesting']:
-            try:
-                if module_name == 'yaml':
-                    import yaml
-                elif module_name == 'utils':
-                    from utils import ConfigManager
-                elif module_name == 'data':
-                    from data import DataClient
-                elif module_name == 'environments':
-                    from environments import TradingEnvironment
-                elif module_name == 'agents':
-                    from agents import PPOAgent
-                elif module_name == 'evaluation.backtesting':
-                    from evaluation.backtesting import Backtester
-                st.write(f"✅ {module_name}")
-            except Exception as ex:
-                st.write(f"❌ {module_name}: {ex}")
-    
-    # Create fallback function
-    def create_default_config():
-        """Fallback default config when imports fail."""
-        return {
-            'trading': {
-                'symbols': ['AAPL', 'MSFT', 'GOOGL', 'BTC/USDT', 'ETH/USDT'],
-                'timeframe': '5m',
-                'initial_balance': 10000,
-                'max_position_size': 0.1,
-                'transaction_cost': 0.001,
-                'slippage': 0.0005
-            },
-            'ppo': {
-                'learning_rate': 3e-4,
-                'n_steps': 2048,
-                'batch_size': 64,
-                'n_epochs': 10,
-                'gamma': 0.99,
-                'gae_lambda': 0.95,
-                'clip_range': 0.2,
-                'ent_coef': 0.01,
-                'vf_coef': 0.5,
-                'max_grad_norm': 0.5
-            },
-            'training': {
-                'total_timesteps': 100000,
-                'eval_freq': 10000,
-                'save_freq': 50000,
-                'log_interval': 1000,
-                'n_eval_episodes': 10
-            },
-            'network': {
-                'policy_layers': [256, 256],
-                'value_layers': [256, 256],
-                'activation': 'tanh'
-            },
-            'paths': {
-                'data_dir': 'data',
-                'model_dir': 'models',
-                'log_dir': 'logs'
-            }
-        }
-    
-    def format_currency(value):
-        """Fallback currency formatter."""
-        return f"${value:,.2f}"
-    
-    def format_percentage(value):
-        """Fallback percentage formatter."""
-        return f"{value*100:.2f}%"
-    
-except Exception as e:
-    SYSTEM_READY = False
-    IMPORT_ERROR = f"System error: {e}"
-    st.error(f"⚠️ System initialization error: {e}")
-
-
-def handle_errors(func):
-    """Decorator to handle errors in GUI functions gracefully."""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            st.error(f"❌ Error in {func.__name__}: {str(e)}")
-            st.info("💡 Please check your configuration and try again.")
-            logger.error(f"GUI error in {func.__name__}: {e}", exc_info=True)
-            return None
-    return wrapper
-
-
-@handle_errors
-def show_system_status():
-    """Show system status and health checks."""
-    if not SYSTEM_READY:
-        st.error("🔴 System Not Ready")
-        st.warning(f"Issue: {IMPORT_ERROR}")
-        st.info("Please resolve the issues above before using the system.")
-        return False
-    
-    return True
-
-# Page configuration
-st.set_page_config(
-    page_title="AI PPO Trading System",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-def get_theme_css():
-    """Get CSS styles based on current theme."""
-    if st.session_state.theme == 'light':
-        return get_light_theme_css()
-    else:
-        return get_dark_theme_css()
-
-def get_plotly_theme():
-    """Get plotly theme configuration based on current theme."""
-    # Ensure theme is initialized
-    if 'theme' not in st.session_state:
-        st.session_state.theme = 'dark'
-        
-    if st.session_state.theme == 'light':
-        return {
-            'paper_bgcolor': 'white',
-            'plot_bgcolor': 'white',
-            'font': {'color': '#212529'},
-            'colorway': ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#e83e8c', '#fd7e14', '#20c997']
-        }
-    else:
-        return {
-            'paper_bgcolor': '#262730',
-            'plot_bgcolor': '#262730', 
-            'font': {'color': '#ffffff'},
-            'colorway': ['#667eea', '#51cf66', '#ffd43b', '#ff6b6b', '#a78bfa', '#f472b6', '#fb923c', '#34d399']
-        }
 
 def get_dark_theme_css():
     """Get dark theme CSS styles."""
@@ -803,24 +618,55 @@ def get_light_theme_css():
 
 # CSS will be applied in main() after theme initialization
 
+# Settings persistence functions
+def load_user_settings():
+    """Load user settings from file."""
+    settings_file = os.path.join(os.path.dirname(__file__), 'user_settings.json')
+    try:
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load user settings: {e}")
+    return {}
+
+def save_user_settings(settings):
+    """Save user settings to file."""
+    settings_file = os.path.join(os.path.dirname(__file__), 'user_settings.json')
+    try:
+        os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+        with open(settings_file, 'w') as f:
+            json.dump(settings, f, indent=2)
+        logger.info("User settings saved successfully")
+    except Exception as e:
+        logger.error(f"Failed to save user settings: {e}")
+
+def merge_with_user_settings(config):
+    """Merge configuration with saved user settings."""
+    user_settings = load_user_settings()
+    if user_settings:
+        # Deep merge user settings into config
+        for section, settings in user_settings.items():
+            if section in config and isinstance(config[section], dict) and isinstance(settings, dict):
+                config[section].update(settings)
+            else:
+                config[section] = settings
+    return config
+
 # Initialize session state
 if 'config' not in st.session_state:
     try:
-        # First try to load existing saved config
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.yaml")
-        if os.path.exists(config_path):
-            logger.info(f"Loading existing configuration from {config_path}")
-            config_manager = ConfigManager()
-            st.session_state.config = config_manager.load_config(config_path)
-            logger.info("✅ Loaded saved configuration successfully")
-        else:
-            logger.info("No saved config found, creating default configuration")
-            st.session_state.config = create_default_config()
+        base_config = create_default_config()
+        # Load and merge user settings
+        st.session_state.config = merge_with_user_settings(base_config)
     except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        logger.info("Falling back to default configuration")
+        logger.error(f"Failed to create default config: {e}")
         # Minimal fallback config
-        st.session_state.config = create_default_config()
+        st.session_state.config = {
+            'trading': {'symbols': ['AAPL', 'BTC/USDT'], 'initial_balance': 10000, 'max_position_days': 30},
+            'ppo': {'learning_rate': 3e-4, 'n_steps': 2048},
+            'training': {'total_timesteps': 100000}
+        }
 
 # Initialize theme state
 if 'theme' not in st.session_state:
@@ -837,7 +683,8 @@ def detect_active_training():
     try:
         # Try to use psutil for process detection
         try:
-            import psutil
+            import importlib
+            psutil = importlib.import_module('psutil')
             
             # Check for running Python processes with train_enhanced.py
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -882,7 +729,7 @@ def detect_active_training():
                         
                     # First check if training was recently completed successfully
                     for line in reversed(lines[-50:]):  # Check last 50 lines
-                        if any(keyword in line for keyword in ['Training completed successfully', 'TRAINING STOPPED', 'TRAINING FAILED', 'stopped by user', 'Stop file detected', 'graceful shutdown']):
+                        if any(keyword in line for keyword in ['Training completed successfully', 'TRAINING STOPPED', 'TRAINING FAILED', 'stopped by user']):
                             # Check if this completion event is recent (within last 10 minutes)
                             import re
                             timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
@@ -912,39 +759,16 @@ def detect_active_training():
                     
                     # Now look for recent active progress lines (only if no completion found)
                     for line in reversed(lines[-20:]):  # Check last 20 lines
-                        # Check for our ACTUAL training patterns from the real logs:
-                        if ('Starting iteration' in line and 'batch_timesteps' in line and 'total=' in line) or \
-                           ('Reset environment. Episode start:' in line) or \
-                           ('Iteration' in line and 'Training' in line and 'timesteps' in line) or \
-                           ('Policy Loss' in line and 'Episodes' in line) or \
-                           (any(keyword in line for keyword in ['Step', 'Episode']) and '%' in line and '100.0%' not in line):
-                            # Check if this progress line is recent
+                        if any(keyword in line for keyword in ['Step', 'Episode']) and '%' in line and '100.0%' not in line:
+                            # Check if this progress line is recent and not at 100%
                             import re
                             timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
                             if timestamp_match:
                                 log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
-                                if current_time - log_time.timestamp() < 300:  # Extended to 5 minutes for slower training
-                                    # Found recent active progress - but verify a process is actually running
-                                    # Double-check by looking for actual training process
-                                    try:
-                                        import psutil
-                                        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                                            try:
-                                                cmdline = proc.info.get('cmdline', [])
-                                                if (cmdline and 
-                                                    'python' in cmdline[0].lower() and 
-                                                    any('train_enhanced.py' in str(arg) for arg in cmdline)):
-                                                    # Found actual training process
-                                                    st.session_state.training_active = True
-                                                    return True
-                                            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                                continue
-                                        # Recent logs but no process - training has stopped
-                                        return False
-                                    except ImportError:
-                                        # No psutil, assume active based on logs (less reliable)
-                                        st.session_state.training_active = True
-                                        return True
+                                if current_time - log_time.timestamp() < 120:  # Only very recent (2 minutes)
+                                    # Found recent active progress (not at completion)
+                                    st.session_state.training_active = True
+                                    return True
                 except Exception:
                     pass
                     
@@ -1193,7 +1017,10 @@ def main():
         
         # Check if models exist
         model_dir = "models"
-        models_exist = os.path.exists(model_dir) and len([f for f in os.listdir(model_dir) if f.endswith('.pt')]) > 0
+        try:
+            models_exist = os.path.exists(model_dir) and len([f for f in os.listdir(model_dir) if f.endswith('.pt')]) > 0
+        except (OSError, PermissionError):
+            models_exist = False
         
         
         if models_exist:
@@ -1343,16 +1170,7 @@ def show_dashboard():
 @handle_errors
 def show_configuration():
     """Show configuration management."""
-    import os  # Explicit import to avoid scoping issues
-    
     st.title("⚙️ Configuration Management")
-    
-    # Show configuration status
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.yaml")
-    if os.path.exists(config_path):
-        st.info("📄 **Status**: Using saved configuration from config/config.yaml")
-    else:
-        st.warning("⚠️ **Status**: Using default configuration (not saved to file yet)")
     
     # Configuration tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Trading", "PPO Parameters", "Risk Management", "Data Sources"])
@@ -1365,9 +1183,9 @@ def show_configuration():
         with col1:
             symbols = st.text_area(
                 "Trading Symbols (one per line)",
-                value="\n".join(st.session_state.config.get('trading', {}).get('symbols', ['BTCUSDT'])),
+                value="\n".join(st.session_state.config.get('trading', {}).get('symbols', ['AAPL', 'BTC/USDT'])),
                 height=100,
-                help="Format depends on data provider:\n• Binance.US: BTCUSDT, ETHUSDT, ADAUSDT\n• YFinance: BTC-USD, ETH-USD, AAPL, MSFT\n• Alpaca: AAPL, MSFT, TSLA (stocks only)"
+                help="Supports stocks (AAPL, MSFT) and crypto pairs (BTC/USDT, ETH/USDT, ADA/USDT, etc.)"
             )
             
             initial_balance = st.number_input(
@@ -1377,19 +1195,10 @@ def show_configuration():
                 step=1000
             )
             
-            timeframe_options = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
-            current_timeframe = st.session_state.config.get('trading', {}).get('timeframe', '5m')
-            
-            # Find the index of the current timeframe, default to '5m' if not found
-            try:
-                timeframe_index = timeframe_options.index(current_timeframe)
-            except ValueError:
-                timeframe_index = 1  # Default to '5m'
-            
             timeframe = st.selectbox(
                 "Timeframe",
-                options=timeframe_options,
-                index=timeframe_index
+                options=['1m', '5m', '15m', '30m', '1h', '4h', '1d'],
+                index=4  # Default to '1h'
             )
         
         with col2:
@@ -1399,6 +1208,15 @@ def show_configuration():
                 max_value=100,
                 value=int(st.session_state.config.get('trading', {}).get('max_position_size', 0.1) * 100),
                 step=1
+            )
+            
+            max_position_days = st.slider(
+                "Max Position Duration (Days)",
+                min_value=1,
+                max_value=90,
+                value=st.session_state.config.get('trading', {}).get('max_position_days', 30),
+                step=1,
+                help="Maximum days to hold a position before force close"
             )
             
             transaction_cost = st.number_input(
@@ -1426,9 +1244,12 @@ def show_configuration():
                 'timeframe': timeframe,
                 'initial_balance': initial_balance,
                 'max_position_size': max_position_size / 100,
+                'max_position_days': max_position_days,
                 'transaction_cost': transaction_cost / 100,
                 'slippage': slippage / 100
             }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("Trading configuration saved!")
     
     with tab2:
@@ -1515,6 +1336,8 @@ def show_configuration():
                 'clip_range': clip_range,
                 'ent_coef': ent_coef
             }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("PPO configuration saved!")
     
     with tab3:
@@ -1563,26 +1386,17 @@ def show_configuration():
                 'max_leverage': max_leverage,
                 'position_concentration_limit': position_concentration / 100
             }
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("Risk management configuration saved!")
     
     with tab4:
         st.subheader("Data Sources")
         
-        # Get current data provider from saved config
-        current_provider = st.session_state.config.get('data_source', {}).get('provider', 'yfinance')
-        provider_options = ['yfinance', 'alphavantage', 'alpaca', 'polygon', 'binance']
-        
-        # Find the index of the current provider, default to 0 if not found
-        try:
-            current_index = provider_options.index(current_provider)
-        except ValueError:
-            current_index = 0
-        
         provider = st.selectbox(
             "Data Provider",
-            options=provider_options,
-            index=current_index,
-            help="Choose your preferred data provider. Alpaca for stocks, Binance for crypto, YFinance for free data."
+            options=['yfinance', 'alphavantage', 'polygon'],
+            index=0
         )
         
         if provider == 'alphavantage':
@@ -1591,92 +1405,6 @@ def show_configuration():
                 type="password",
                 help="Get your free API key from https://www.alphavantage.co/support/#api-key"
             )
-        elif provider == 'alpaca':
-            # Check if Alpaca credentials are available from environment
-            import os
-            from dotenv import load_dotenv
-            load_dotenv()
-            
-            env_api_key = os.getenv('ALPACA_API_KEY')
-            env_secret_key = os.getenv('ALPACA_SECRET_KEY')
-            
-            if env_api_key and env_secret_key:
-                st.success("✅ Alpaca credentials detected from .env file!")
-                st.info(f"🔑 API Key: {env_api_key[:8]}...")  # Show first 8 chars for verification
-                
-                paper_trading = st.checkbox(
-                    "Paper Trading Mode",
-                    value=True,
-                    help="Enable paper trading (recommended for testing)"
-                )
-                
-                # Auto-configure credentials
-                alpaca_api_key = env_api_key
-                alpaca_secret_key = env_secret_key
-                
-            else:
-                st.warning("⚠️ No Alpaca credentials found in .env file")
-                st.info("💡 Add your credentials to the .env file or enter them below:")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    alpaca_api_key = st.text_input(
-                        "Alpaca API Key",
-                        type="password",
-                        help="Get your API key from https://alpaca.markets/"
-                    )
-                with col2:
-                    alpaca_secret_key = st.text_input(
-                        "Alpaca Secret Key",
-                        type="password",
-                        help="Your Alpaca secret key"
-                    )
-                
-                paper_trading = st.checkbox(
-                    "Paper Trading Mode",
-                    value=True,
-                    help="Enable paper trading (recommended for testing)"
-                )
-        elif provider == 'binance':
-            # Check if Binance credentials are available from environment
-            import os
-            from dotenv import load_dotenv
-            load_dotenv()
-            
-            env_api_key = os.getenv('BINANCE_API_KEY')
-            env_secret_key = os.getenv('BINANCE_SECRET_KEY')
-            
-            if env_api_key and env_secret_key and env_api_key != 'your_binance_api_key_here':
-                st.success("✅ Binance.US credentials detected from .env file!")
-                st.info(f"🔑 API Key: {env_api_key[:8]}...")  # Show first 8 chars for verification
-                st.info("🇺🇸 **Using Binance.US Configuration**")
-                st.info("🔗 Manage your API keys at: https://www.binance.us/en/usercenter/settings/api-management")
-                
-                # Auto-configure credentials
-                binance_api_key = env_api_key
-                binance_secret_key = env_secret_key
-                
-            else:
-                st.warning("⚠️ No Binance.US credentials found in .env file")
-                st.info("💡 Add your credentials to the .env file or enter them below:")
-                st.info("🇺🇸 **Binance.US Configuration**")
-                st.info("🔗 Get your API keys from: https://www.binance.us/en/usercenter/settings/api-management")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    binance_api_key = st.text_input(
-                        "Binance.US API Key",
-                        type="password",
-                        help="Your Binance.US API key (enable Spot Trading)"
-                    )
-                with col2:
-                    binance_secret_key = st.text_input(
-                        "Binance.US Secret Key",
-                        type="password",
-                        help="Your Binance.US secret key"
-                    )
-                
-                st.warning("🚨 **Security Note:** Never share your API keys and enable IP restrictions on Binance.US!")
         elif provider == 'polygon':
             api_key = st.text_input(
                 "Polygon API Key",
@@ -1684,34 +1412,17 @@ def show_configuration():
                 help="Get your API key from https://polygon.io/"
             )
         else:
-            st.info("Yahoo Finance is free and doesn't require an API key, but has limited real-time capabilities.")
+            st.info("Yahoo Finance is free and doesn't require an API key.")
             api_key = ""
         
         if st.button("Save Data Source Configuration"):
-            # Update both data_source and tradingview for compatibility
-            st.session_state.config['data_source'] = {'provider': provider}
             st.session_state.config['tradingview'] = {'provider': provider}
-            
-            if provider == 'alpaca' and alpaca_api_key and alpaca_secret_key:
-                if 'data_providers' not in st.session_state.config:
-                    st.session_state.config['data_providers'] = {}
-                st.session_state.config['data_providers']['alpaca'] = {
-                    'api_key': alpaca_api_key,
-                    'secret_key': alpaca_secret_key,
-                    'paper': paper_trading
+            if api_key:
+                st.session_state.config['data_providers'] = {
+                    provider: {'api_key': api_key}
                 }
-            elif provider == 'binance' and binance_api_key and binance_secret_key:
-                if 'data_providers' not in st.session_state.config:
-                    st.session_state.config['data_providers'] = {}
-                st.session_state.config['data_providers']['binance'] = {
-                    'api_key': binance_api_key,
-                    'secret_key': binance_secret_key
-                }
-            elif api_key and provider not in ['yfinance', 'binance']:
-                if 'data_providers' not in st.session_state.config:
-                    st.session_state.config['data_providers'] = {}
-                st.session_state.config['data_providers'][provider] = {'api_key': api_key}
-            
+            # Save to persistent storage
+            save_user_settings(st.session_state.config)
             st.success("Data source configuration saved!")
     
     # Save all configuration to file
@@ -1724,34 +1435,25 @@ def show_configuration():
                 config_manager = ConfigManager()
                 config_manager.config = st.session_state.config
                 
-                # Use absolute path for consistency
-                config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-                os.makedirs(config_dir, exist_ok=True)
-                config_path = os.path.join(config_dir, "config.yaml")
+                os.makedirs("config", exist_ok=True)
+                config_manager.save_config("config/config.yaml")
                 
-                config_manager.save_config(config_path)
-                
-                st.success(f"✅ Configuration saved to {config_path}")
-                logger.info(f"Configuration saved to {config_path}")
+                st.success("Configuration saved to config/config.yaml")
             except Exception as e:
-                st.error(f"❌ Error saving configuration: {e}")
-                logger.error(f"Save error: {e}")
+                st.error(f"Error saving configuration: {e}")
     
     with col2:
         if st.button("📂 Load from File", width="stretch"):
             try:
-                config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.yaml")
-                if os.path.exists(config_path):
-                    config_manager = ConfigManager()
-                    st.session_state.config = config_manager.load_config(config_path)
-                    st.success("✅ Configuration loaded from file")
-                    logger.info(f"Configuration loaded from {config_path}")
+                if os.path.exists("config/config.yaml"):
+                    config_manager = ConfigManager("config/config.yaml")
+                    st.session_state.config = config_manager.to_dict()
+                    st.success("Configuration loaded from file")
                     st.rerun()
                 else:
-                    st.warning("❌ No saved configuration file found")
+                    st.warning("No configuration file found")
             except Exception as e:
-                st.error(f"❌ Error loading configuration: {e}")
-                logger.error(f"Load error: {e}")
+                st.error(f"Error loading configuration: {e}")
     
     with col3:
         if st.button("🔄 Reset to Defaults", width="stretch"):
@@ -1765,16 +1467,15 @@ def show_data_analysis():
     """Show data analysis page."""
     st.title("📊 Data Analysis")
     
-    # Check if data source is configured
-    data_source = st.session_state.config.get('data_source', {}).get('provider', 'yfinance')
-    st.markdown(f"""
-    <div class="info-box">
-        <strong>📊 Live Data Analysis</strong> - Connected to {data_source.upper()} data provider
+    st.markdown("""
+    <div class="warning-box">
+        <strong>Note:</strong> This page shows sample data analysis. In a production environment, 
+        this would connect to your configured data sources.
     </div>
     """, unsafe_allow_html=True)
     
     # Symbol selection
-    symbols = st.session_state.config.get('trading', {}).get('symbols', ['BTCUSDT'])
+    symbols = st.session_state.config.get('trading', {}).get('symbols', ['AAPL'])
     selected_symbol = st.selectbox("Select Symbol", symbols)
     
     # Date range selection
@@ -1786,74 +1487,33 @@ def show_data_analysis():
     
     if st.button("Load Data"):
         with st.spinner("Loading and analyzing data..."):
-            try:
-                # Get configured data source and timeframe
-                data_source = st.session_state.config.get('data_source', {}).get('provider', 'yfinance')
-                timeframe = st.session_state.config.get('trading', {}).get('timeframe', '5m')
-                st.info(f"Loading real data for {selected_symbol} from {data_source.upper()} (timeframe: {timeframe})")
-                
-                # Initialize DataClient with current configuration
-                data_client = DataClient(st.session_state.config)
-                
-                # Load real market data
-                data = data_client.get_historical_data(
-                    symbol=selected_symbol,
-                    period='1y',  # Use period instead of date range for now
-                    interval=timeframe  # Use configured timeframe instead of hardcoded '1d'
-                )
-                
-                if data is None or data.empty:
-                    st.error(f"❌ No data found for {selected_symbol}. Please check your data source configuration.")
-                    st.info("💡 Try a different symbol (e.g., AAPL, MSFT, GOOGL) or check your API credentials.")
-                    return
-                
-                # Ensure we have the required columns
-                if 'Close' not in data.columns:
-                    st.error("❌ Data format error: 'Close' column not found")
-                    return
-                    
-                st.success(f"✅ Successfully loaded {len(data)} data points from {data_source.upper()}")
-                
-            except Exception as e:
-                st.error(f"❌ Error loading data: {str(e)}")
-                st.info("🔄 Falling back to sample data for demonstration...")
-                
-                # Fallback to sample data if real data fails
-                dates = pd.date_range(start=start_date, end=end_date, freq='D')
-                np.random.seed(42)
-                
-                # Generate realistic stock price data
-                price_changes = np.random.normal(0.001, 0.02, len(dates))
-                prices = 100 * (1 + price_changes).cumprod()
-                
-                volume = np.random.normal(1000000, 200000, len(dates))
-                volume = np.abs(volume).astype(int)
-                
-                data = pd.DataFrame({
-                    'Date': dates,
-                    'Close': prices,
-                    'Volume': volume
-                })
-                data.set_index('Date', inplace=True)
+            # This would normally load real data
+            st.info(f"Loading data for {selected_symbol} from {start_date} to {end_date}")
+            
+            # Create sample data for demonstration
+            dates = pd.date_range(start=start_date, end=end_date, freq='D')
+            np.random.seed(42)
+            
+            # Generate realistic stock price data
+            price_changes = np.random.normal(0.001, 0.02, len(dates))
+            prices = 100 * (1 + price_changes).cumprod()
+            
+            volume = np.random.normal(1000000, 200000, len(dates))
+            volume = np.abs(volume).astype(int)
+            
+            data = pd.DataFrame({
+                'Date': dates,
+                'Close': prices,
+                'Volume': volume
+            })
             
             # Display data
             st.subheader(f"Price Chart - {selected_symbol}")
             
             fig = go.Figure()
-            
-            # Handle both indexed and non-indexed data
-            if data.index.name == 'Date' or 'Date' in str(type(data.index)):
-                # Real data with Date index
-                x_data = data.index
-                y_data = data['Close']
-            else:
-                # Fallback sample data with Date column
-                x_data = data['Date'] if 'Date' in data.columns else data.index
-                y_data = data['Close']
-            
             fig.add_trace(go.Scatter(
-                x=x_data,
-                y=y_data,
+                x=data['Date'],
+                y=data['Close'],
                 mode='lines',
                 name='Close Price',
                 line=dict(color='#1f77b4', width=2)
@@ -1869,28 +1529,36 @@ def show_data_analysis():
             
             st.plotly_chart(fig, width="stretch")
             
-            # Statistics
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Current Price", f"${data['Close'].iloc[-1]:.2f}")
-            
-            with col2:
-                total_return = (data['Close'].iloc[-1] / data['Close'].iloc[0] - 1) * 100
-                st.metric("Total Return", f"{total_return:.1f}%")
-            
-            with col3:
-                volatility = data['Close'].pct_change().std() * np.sqrt(252) * 100
-                st.metric("Volatility (Annual)", f"{volatility:.1f}%")
+            # Statistics - with safety checks
+            if len(data) > 0:
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Current Price", f"${data['Close'].iloc[-1]:.2f}")
+                
+                with col2:
+                    # Protect against division by zero
+                    start_price = data['Close'].iloc[0]
+                    end_price = data['Close'].iloc[-1]
+                    if start_price > 0:
+                        total_return = (end_price / start_price - 1) * 100
+                    else:
+                        total_return = 0.0
+                    st.metric("Total Return", f"{total_return:.1f}%")
+                
+                with col3:
+                    returns = data['Close'].pct_change().dropna()
+                    if len(returns) > 0:
+                        volatility = returns.std() * np.sqrt(252) * 100
+                    else:
+                        volatility = 0.0
+                    st.metric("Volatility (Annual)", f"{volatility:.1f}%")
+            else:
+                st.warning("No data available for statistics")
             
             with col4:
-                if 'Volume' in data.columns:
-                    avg_volume = data['Volume'].mean()
-                    st.metric("Avg Volume", f"{avg_volume:,.0f}")
-                else:
-                    # Show additional price statistics if volume not available
-                    max_price = data['Close'].max()
-                    st.metric("Max Price", f"${max_price:.2f}")
+                avg_volume = data['Volume'].mean()
+                st.metric("Avg Volume", f"{avg_volume:,.0f}")
 
 # Add caching for expensive operations
 @st.cache_data(ttl=10)  # Cache for 10 seconds
@@ -1901,7 +1569,10 @@ def get_available_models():
     model_dir = os.path.join(project_root, "models")
     
     if os.path.exists(model_dir):
-        return [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+        try:
+            return [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+        except (OSError, PermissionError):
+            return []
     return []
 
 @handle_errors
@@ -2225,12 +1896,10 @@ def show_training():
         
         # Data configuration
         st.markdown("**📈 Data Configuration**")
-        # Get symbols from saved configuration
-        config_symbols = st.session_state.config.get('trading', {}).get('symbols', ['BTCUSDT'])
         data_symbols = st.text_area(
             "Trading Symbols",
-            value="\n".join(config_symbols),
-            help="One symbol per line - loaded from your saved configuration"
+            value="AAPL\nMSFT\nGOOGL",
+            help="One symbol per line"
         )
         
         data_period = st.selectbox(
@@ -2255,266 +1924,201 @@ def show_training():
     if st.session_state.training_active:
         st.subheader("📊 Training Progress")
         
-        # Get process reference safely
-        process = getattr(st.session_state, 'training_process', None)
-        
-        # Check if process exists and is still running
-        if process is not None:
-            try:
-                process_running = process.poll() is None
-            except (AttributeError, OSError):
-                process_running = False
-                process = None
-        else:
-            process_running = False
-        
-        if process_running:
-            # Process is still running
-            col1, col2, col3 = st.columns(3)
+        # Check if we have a subprocess running
+        if hasattr(st.session_state, 'training_process'):
+            process = st.session_state.training_process
             
-            with col1:
-                st.metric("Status", "🔄 Training Active")
-            
-            with col2:
-                # Calculate elapsed time
-                import time
-                elapsed = 0  # Initialize elapsed time
-                if hasattr(st.session_state, 'training_start_time'):
-                    elapsed = time.time() - st.session_state.training_start_time
-                    st.metric("Elapsed Time", f"{int(elapsed//60)}:{int(elapsed%60):02d}")
-                else:
-                    st.session_state.training_start_time = time.time()
-                    st.metric("Elapsed Time", "Starting...")
-            
-            with col3:
-                # Try to read progress from training log file
-                actual_progress = None
-                debug_info = ""
-                try:
-                    log_file = os.path.join(os.path.dirname(__file__), '..', 'logs', 'training_debug.log')
-                    if os.path.exists(log_file):
-                        with open(log_file, 'r') as f:
-                            lines = f.readlines()
-                            
-                        # Get training start time for this session
-                        training_start = getattr(st.session_state, 'training_start_time', time.time())
-                        
-                        # Look for progress lines after training started
-                        progress_lines = []
-                        continuous_activity = []
-                        
-                        for line in reversed(lines[-100:]):  # Check last 100 lines
-                            # Parse timestamp from log line
-                            import re
-                            timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
-                            if timestamp_match:
-                                log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
-                                log_timestamp = log_time.timestamp()
-                                
-                                # Only consider logs from current training session (with buffer)
-                                if log_timestamp >= training_start - 30:  # 30 second buffer
-                                    
-                                    # Regular training progress
-                                    if 'Step' in line and '%' in line and ')' in line:
-                                        step_match = re.search(r'Step\s+(\d+)/(\d+)\s+\(\s*(\d+\.?\d*)%\)', line)
-                                        if step_match:
-                                            current_step = int(step_match.group(1))
-                                            total_steps = int(step_match.group(2))
-                                            progress_pct = float(step_match.group(3))
-                                            progress_lines.append((current_step, total_steps, progress_pct, log_timestamp))
-                                    
-                                    # Our actual training progress pattern: "Iteration X | Training Y timesteps | Total: Z"
-                                    elif 'Iteration' in line and 'Training' in line and 'timesteps' in line:
-                                        iter_match = re.search(r'Iteration\s+(\d+)\s+\|\s+Training\s+(\d+)\s+timesteps\s+\|\s+Total:\s+(\d+)', line)
-                                        if iter_match:
-                                            iteration = int(iter_match.group(1))
-                                            batch_size = int(iter_match.group(2))
-                                            total_timesteps = int(iter_match.group(3))
-                                            
-                                            # Calculate progress based on continuous training
-                                            # Show progress as iteration number (continuous training doesn't have fixed end)
-                                            progress_pct = min(85, iteration * 5)  # Show progress based on iterations
-                                            progress_lines.append((iteration, total_timesteps, progress_pct, log_timestamp))
-                                    
-                                    # Continuous training activity (saves, checkpoints, episodes)
-                                    elif any(keyword in line.lower() for keyword in ['saved model', 'checkpoint', 'episode', 'timestep', 'policy loss']):
-                                        # Look for timestep information in continuous training
-                                        timestep_match = re.search(r'timestep[s]?\s*:?\s*(\d+)', line.lower())
-                                        episode_match = re.search(r'episode[s]?\s*:?\s*(\d+)', line.lower())
-                                        iteration_match = re.search(r'iteration\s+(\d+)', line.lower())
-                                        
-                                        if timestep_match:
-                                            timesteps = int(timestep_match.group(1))
-                                            continuous_activity.append(('timestep', timesteps, log_timestamp))
-                                        elif episode_match:
-                                            episodes = int(episode_match.group(1))
-                                            continuous_activity.append(('episode', episodes, log_timestamp))
-                                        elif iteration_match:
-                                            iterations = int(iteration_match.group(1))
-                                            continuous_activity.append(('iteration', iterations, log_timestamp))
-                                        else:
-                                            # General activity indicator
-                                            continuous_activity.append(('activity', 0, log_timestamp))
-                                    
-                        # Determine progress based on training mode
-                        training_mode = getattr(st.session_state, 'training_mode', 'new')
-                        
-                        if training_mode == 'continuous':
-                            # For continuous training, show activity indicators
-                            if continuous_activity:
-                                continuous_activity.sort(key=lambda x: x[2], reverse=True)
-                                activity_type, value, timestamp = continuous_activity[0]
-                                
-                                # Calculate time since last activity
-                                time_since = time.time() - timestamp
-                                if time_since < 60:  # Active within last minute
-                                    if activity_type == 'timestep':
-                                        debug_info = f"Timesteps: {value:,}"
-                                        actual_progress = min(85, (value / 50000) * 100)  # Rough progress based on timesteps
-                                    elif activity_type == 'episode':
-                                        debug_info = f"Episodes: {value:,}"
-                                        actual_progress = min(85, (value / 1000) * 100)  # Rough progress based on episodes
-                                    else:
-                                        debug_info = "Training active"
-                                        actual_progress = 50  # Show 50% for general activity
-                                else:
-                                    debug_info = f"Last activity: {int(time_since//60)}m ago"
-                                    actual_progress = 25  # Reduced progress for older activity
-                                    
-                        else:
-                            # Regular training with step-based progress
-                            if progress_lines:
-                                # Sort by timestamp and get the latest
-                                progress_lines.sort(key=lambda x: x[3], reverse=True)
-                                latest_progress = progress_lines[0]
-                                
-                                # Check if this is our iteration format
-                                if len(latest_progress) >= 4:
-                                    current_step, total_steps, progress_pct, _ = latest_progress
-                                    
-                                    # If this looks like our iteration format (iteration, timesteps, progress, timestamp)
-                                    if total_steps > 100000:  # Likely timesteps, not training steps
-                                        debug_info = f"Iteration {current_step} | {total_steps:,} timesteps"
-                                    else:
-                                        debug_info = f"Step {current_step}/{total_steps}"
-                                    
-                                    actual_progress = progress_pct
-                                else:
-                                    actual_progress = 50
-                                    debug_info = "Training active"
-                                
-                except Exception as e:
-                    debug_info = f"Parse error"
+            # Check if process is still running
+            if process.poll() is None:
+                # Process is still running
+                col1, col2, col3 = st.columns(3)
                 
-                # Show actual progress if available, otherwise use time estimation
-                if actual_progress is not None and actual_progress > 0:
-                    if training_mode == 'continuous':
-                        st.metric("Training Activity", f"{actual_progress:.0f}%", delta=debug_info)
+                with col1:
+                    st.metric("Status", "🔄 Training Active")
+                
+                with col2:
+                    # Calculate elapsed time
+                    import time
+                    elapsed = 0  # Initialize elapsed time
+                    if hasattr(st.session_state, 'training_start_time'):
+                        elapsed = time.time() - st.session_state.training_start_time
+                        st.metric("Elapsed Time", f"{int(elapsed//60)}:{int(elapsed%60):02d}")
                     else:
-                        st.metric("Training Progress", f"{actual_progress:.1f}%", delta=debug_info)
-                    progress = actual_progress
-                else:
-                    # Fallback to time-based estimation
-                    if elapsed > 60:  # After 1 minute, estimate progress
-                        estimated_progress = min(95, (elapsed / 3600) * 20)  # Rough estimate
-                        st.metric("Training Progress", f"~{estimated_progress:.1f}%", delta="Time estimate")
-                        progress = estimated_progress
-                    else:
-                        st.metric("Training Progress", "Starting...", delta="Initializing")
-                        progress = 0
-            
-            # Progress bar
-            if training_mode == 'continuous':
-                # For continuous training, show a pulsing or indeterminate progress indicator
-                if progress > 0:
-                    st.progress(min(progress / 100.0, 0.85))  # Cap at 85% for continuous
-                else:
-                    st.progress(0.5)  # Show 50% as default for continuous training
-            else:
-                # Regular training with standard progress bar
-                st.progress(min(progress / 100.0, 0.99))  # Cap at 99% to show it's still running
-            
-            # Control buttons
-            col1, col2, col3 = st.columns([1, 1, 2])
-            
-            with col1:
-                if st.button("⏹️ Stop Training", type="secondary"):
+                        st.session_state.training_start_time = time.time()
+                        st.metric("Elapsed Time", "Starting...")
+                
+                with col3:
+                    # Try to read progress from training log file
+                    actual_progress = None
+                    debug_info = ""
                     try:
-                        if process is not None:
-                            process.terminate()
-                        st.session_state.training_active = False
-                        # Clean up process reference
-                        if hasattr(st.session_state, 'training_process'):
-                            delattr(st.session_state, 'training_process')
-                        st.success("Training stopped successfully")
-                        print(f"\n{'='*60}")
-                        print("⏹️ TRAINING STOPPED BY USER")
-                        print(f"{'='*60}\n")
-                        st.rerun()
+                        log_file = os.path.join(os.path.dirname(__file__), '..', 'logs', 'training_debug.log')
+                        if os.path.exists(log_file):
+                            with open(log_file, 'r') as f:
+                                lines = f.readlines()
+                                
+                            # Get training start time for this session
+                            training_start = getattr(st.session_state, 'training_start_time', time.time())
+                            
+                            # Look for progress lines after training started
+                            progress_lines = []
+                            continuous_activity = []
+                            
+                            for line in reversed(lines[-100:]):  # Check last 100 lines
+                                # Parse timestamp from log line
+                                import re
+                                timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line)
+                                if timestamp_match:
+                                    log_time = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
+                                    log_timestamp = log_time.timestamp()
+                                    
+                                    # Only consider logs from current training session (with buffer)
+                                    if log_timestamp >= training_start - 30:  # 30 second buffer
+                                        
+                                        # Regular training progress
+                                        if 'Step' in line and '%' in line and ')' in line:
+                                            step_match = re.search(r'Step\s+(\d+)/(\d+)\s+\(\s*(\d+\.?\d*)%\)', line)
+                                            if step_match:
+                                                current_step = int(step_match.group(1))
+                                                total_steps = int(step_match.group(2))
+                                                progress_pct = float(step_match.group(3))
+                                                progress_lines.append((current_step, total_steps, progress_pct, log_timestamp))
+                                        
+                                        # Continuous training activity (saves, checkpoints, episodes)
+                                        elif any(keyword in line.lower() for keyword in ['saved model', 'checkpoint', 'episode', 'timestep']):
+                                            # Look for timestep information in continuous training
+                                            timestep_match = re.search(r'timestep[s]?\s*:?\s*(\d+)', line.lower())
+                                            episode_match = re.search(r'episode[s]?\s*:?\s*(\d+)', line.lower())
+                                            
+                                            if timestep_match:
+                                                timesteps = int(timestep_match.group(1))
+                                                continuous_activity.append(('timestep', timesteps, log_timestamp))
+                                            elif episode_match:
+                                                episodes = int(episode_match.group(1))
+                                                continuous_activity.append(('episode', episodes, log_timestamp))
+                                            else:
+                                                # General activity indicator
+                                                continuous_activity.append(('activity', 0, log_timestamp))
+                                        
+                            # Determine progress based on training mode
+                            training_mode = getattr(st.session_state, 'training_mode', 'new')
+                            
+                            if training_mode == 'continuous':
+                                # For continuous training, show activity indicators
+                                if continuous_activity and len(continuous_activity) > 0:
+                                    continuous_activity.sort(key=lambda x: x[2], reverse=True)
+                                    activity_type, value, timestamp = continuous_activity[0]
+                                    
+                                    # Calculate time since last activity
+                                    time_since = time.time() - timestamp
+                                    if time_since < 60:  # Active within last minute
+                                        if activity_type == 'timestep':
+                                            debug_info = f"Timesteps: {value:,}"
+                                            actual_progress = min(85, (value / 50000) * 100)  # Rough progress based on timesteps
+                                        elif activity_type == 'episode':
+                                            debug_info = f"Episodes: {value:,}"
+                                            actual_progress = min(85, (value / 1000) * 100)  # Rough progress based on episodes
+                                        else:
+                                            debug_info = "Training active"
+                                            actual_progress = 50  # Show 50% for general activity
+                                    else:
+                                        debug_info = f"Last activity: {int(time_since//60)}m ago"
+                                        actual_progress = 25  # Reduced progress for older activity
+                                        
+                            else:
+                                # Regular training with step-based progress
+                                if progress_lines and len(progress_lines) > 0:
+                                    # Sort by timestamp and get the latest
+                                    progress_lines.sort(key=lambda x: x[3], reverse=True)
+                                    current_step, total_steps, progress_pct, _ = progress_lines[0]
+                                    actual_progress = progress_pct
+                                    debug_info = f"Step {current_step}/{total_steps}"
+                                    
                     except Exception as e:
-                        st.error(f"Could not stop training process: {str(e)}")
-            
-            with col2:
-                if st.button("📊 Refresh Status", type="secondary"):
-                    st.rerun()
-            
-            # Console output information
-            st.info("📺 **Real-time training logs are displayed in the console/terminal where you started the GUI.** Check your terminal window to see detailed training progress!")
-            
-            # Special note for continuous training
-            if training_mode == 'continuous':
-                st.info("♾️ **Continuous Training Mode**: This training will run indefinitely. Progress shows recent activity rather than completion percentage. Stop training manually when satisfied with results.")
-            
-            # Auto-refresh option
-            auto_refresh = st.checkbox("Auto-refresh every 10 seconds", value=True)
-            if auto_refresh:
-                import time
-                time.sleep(10)
-                st.rerun()
-        else:
-            # Process has finished, is None, or failed
-            st.session_state.training_active = False
-            
-            # Check if process finished with return code
-            if process is not None:
-                try:
-                    return_code = getattr(process, 'returncode', None)
-                    if return_code is not None:
-                        if return_code == 0:
-                            st.success("🎉 Training completed successfully!")
-                            print(f"\n{'='*60}")
-                            print("🎉 TRAINING COMPLETED SUCCESSFULLY!")
-                            print(f"{'='*60}\n")
+                        debug_info = f"Parse error"
+                    
+                    # Show actual progress if available, otherwise use time estimation
+                    if actual_progress is not None and actual_progress > 0:
+                        if training_mode == 'continuous':
+                            st.metric("Training Activity", f"{actual_progress:.0f}%", delta=debug_info)
                         else:
-                            st.error(f"❌ Training failed or was interrupted (Exit code: {return_code})")
+                            st.metric("Training Progress", f"{actual_progress:.1f}%", delta=debug_info)
+                        progress = actual_progress
+                    else:
+                        # Fallback to time-based estimation
+                        if elapsed > 60:  # After 1 minute, estimate progress
+                            estimated_progress = min(95, (elapsed / 3600) * 20)  # Rough estimate
+                            st.metric("Training Progress", f"~{estimated_progress:.1f}%", delta="Time estimate")
+                            progress = estimated_progress
+                        else:
+                            st.metric("Training Progress", "Starting...", delta="Initializing")
+                            progress = 0
+                
+                # Progress bar
+                if training_mode == 'continuous':
+                    # For continuous training, show a pulsing or indeterminate progress indicator
+                    if progress > 0:
+                        st.progress(min(progress / 100.0, 0.85))  # Cap at 85% for continuous
+                    else:
+                        st.progress(0.5)  # Show 50% as default for continuous training
+                else:
+                    # Regular training with standard progress bar
+                    st.progress(min(progress / 100.0, 0.99))  # Cap at 99% to show it's still running
+                
+                # Control buttons
+                col1, col2, col3 = st.columns([1, 1, 2])
+                
+                with col1:
+                    if st.button("⏹️ Stop Training", type="secondary"):
+                        try:
+                            process.terminate()
+                            st.session_state.training_active = False
+                            st.success("Training stopped successfully")
                             print(f"\n{'='*60}")
-                            print(f"❌ TRAINING FAILED! Exit code: {return_code}")
+                            print("⏹️ TRAINING STOPPED BY USER")
                             print(f"{'='*60}\n")
-                    else:
-                        st.info("🔄 Training process finished (checking status...)")
-                except (AttributeError, OSError):
-                    st.info("🔄 Training process finished (no return code available)")
+                            st.rerun()
+                        except:
+                            st.error("Could not stop training process")
+                
+                with col2:
+                    if st.button("📊 Refresh Status", type="secondary"):
+                        st.rerun()
+                
+                # Console output information
+                st.info("📺 **Real-time training logs are displayed in the console/terminal where you started the GUI.** Check your terminal window to see detailed training progress!")
+                
+                # Special note for continuous training
+                if training_mode == 'continuous':
+                    st.info("♾️ **Continuous Training Mode**: This training will run indefinitely. Progress shows recent activity rather than completion percentage. Stop training manually when satisfied with results.")
+                
+                # Auto-refresh option
+                auto_refresh = st.checkbox("Auto-refresh every 10 seconds", value=True)
+                if auto_refresh:
+                    import time
+                    time.sleep(10)
+                    st.rerun()
+                
             else:
-                # No process reference - check if training is actually running
-                st.warning("⚠️ Training process reference lost. Checking for active training...")
-                try:
-                    if detect_active_training():
-                        st.info("🔄 Training appears to be still running in background")
-                        # Don't reset training_active if we detect it's still running
-                        st.session_state.training_active = True
-                    else:
-                        st.success("✅ No active training detected. Status reset.")
-                except:
-                    st.success("✅ Training status reset.")
-            
-            # Clean up process reference
-            if hasattr(st.session_state, 'training_process'):
-                delattr(st.session_state, 'training_process')
-            
-            # Show completion message only if training is actually finished
-            if not st.session_state.training_active:
+                # Process has finished
+                st.session_state.training_active = False
+                if process.returncode == 0:
+                    st.success("🎉 Training completed successfully!")
+                    print(f"\n{'='*60}")
+                    print("🎉 TRAINING COMPLETED SUCCESSFULLY!")
+                    print(f"{'='*60}\n")
+                else:
+                    st.error(f"❌ Training failed or was interrupted (Exit code: {process.returncode})")
+                    print(f"\n{'='*60}")
+                    print(f"❌ TRAINING FAILED! Exit code: {process.returncode}")
+                    print(f"{'='*60}\n")
+                
+                # Remove the finished process
+                if hasattr(st.session_state, 'training_process'):
+                    delattr(st.session_state, 'training_process')
+                
+                # Show completion message
                 st.info("💡 Check the Models tab to see your newly trained model")
-                st.rerun()
         
         st.divider()
     
@@ -2738,10 +2342,7 @@ def show_training():
                 if training_mode == "🔄 Continue Existing Model":
                     model_path = os.path.join(model_dir, selected_model)
                     
-                    # Create temporary config file with thread settings and symbols
-                    # Parse symbols from the GUI input
-                    symbols_list = [s.strip() for s in data_symbols.split('\n') if s.strip()]
-                    
+                    # Create temporary config file with thread settings
                     temp_config_data = {
                         'performance': {
                             'num_threads': num_threads,
@@ -2749,9 +2350,6 @@ def show_training():
                             'use_mixed_precision': False,
                             'pin_memory': False,
                             'non_blocking': False
-                        },
-                        'trading': {
-                            'symbols': symbols_list
                         }
                     }
                     
@@ -2810,10 +2408,7 @@ def show_training():
                     st.info(f"📊 Adding {additional_timesteps:,} more training steps")
                     
                 elif training_mode == "♾️ Continuous Training":
-                    # Create temporary config file with thread settings and symbols
-                    # Parse symbols from the GUI input
-                    symbols_list = [s.strip() for s in data_symbols.split('\n') if s.strip()]
-                    
+                    # Create temporary config file with thread settings
                     temp_config_data = {
                         'performance': {
                             'num_threads': num_threads,
@@ -2821,9 +2416,6 @@ def show_training():
                             'use_mixed_precision': False,
                             'pin_memory': False,
                             'non_blocking': False
-                        },
-                        'trading': {
-                            'symbols': symbols_list
                         }
                     }
                     
@@ -2904,10 +2496,7 @@ def show_training():
                     """)
                     
                 else:
-                    # Create temporary config file with thread settings and symbols
-                    # Parse symbols from the GUI input
-                    symbols_list = [s.strip() for s in data_symbols.split('\n') if s.strip()]
-                    
+                    # Create temporary config file with thread settings
                     temp_config_data = {
                         'performance': {
                             'num_threads': num_threads,
@@ -2915,9 +2504,6 @@ def show_training():
                             'use_mixed_precision': False,
                             'pin_memory': False,
                             'non_blocking': False
-                        },
-                        'trading': {
-                            'symbols': symbols_list
                         }
                     }
                     
@@ -3166,25 +2752,14 @@ def show_training():
         # Check if training process is still running
         training_process = getattr(st.session_state, 'training_process', None)
         
-        # Also check for externally started training processes
-        is_training_active = detect_active_training()
-        
-        if training_process or is_training_active:
-            # Check if process is still running (for GUI-started training)
-            if training_process and training_process.poll() is None:
-                # Process is still running (GUI-started training)
+        if training_process:
+            # Check if process is still running
+            if training_process.poll() is None:
+                # Process is still running
                 st.markdown("""
                 <div class="success-box">
                     <strong>🔄 Training in Progress!</strong><br>
                     The model is currently being trained. Monitor the progress below.
-                </div>
-                """, unsafe_allow_html=True)
-            elif is_training_active:
-                # External training process detected
-                st.markdown("""
-                <div class="success-box">
-                    <strong>🔄 Training Active (External Process)</strong><br>
-                    Training detected from external process. Monitoring progress...
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -3254,11 +2829,11 @@ def show_training():
                     st.session_state.training_process = None
         
         else:
-            # No active training found
+            # No process found, show simulated progress
             st.markdown("""
             <div class="info-box">
-                <strong>⏹️ No Active Training</strong><br>
-                No training process currently detected.
+                <strong>🔄 Training Active (Simulation Mode)</strong><br>
+                Demo training metrics are being generated.
             </div>
             """, unsafe_allow_html=True)
         
@@ -3286,49 +2861,8 @@ def show_training():
                     st.metric("Status", "🟢 Running", "Process active")
                 elif training_process:
                     st.metric("Status", "🔴 Finished", f"Exit code: {training_process.returncode}")
-                elif is_training_active:
-                    st.metric("Status", "� Active", "External process")
                 else:
-                    st.metric("Status", "⚪ Inactive", "No training")
-        
-        # Emergency Training Controls for External Processes
-        if is_training_active and not training_process:
-            st.markdown("---")
-            st.subheader("🚨 Emergency Training Controls")
-            st.warning("⚠️ External training process detected. Use controls below to stop training.")
-            
-            col1, col2, col3 = st.columns([2, 2, 1])
-            
-            with col1:
-                if st.button("🛑 Stop Training (Graceful)", type="primary", help="Creates stop_training.txt file for graceful shutdown"):
-                    try:
-                        with open("stop_training.txt", "w") as f:
-                            f.write("Graceful stop requested from GUI")
-                        st.success("✅ Stop signal sent! Training will stop after current iteration.")
-                        st.info("📝 Created stop_training.txt file - training will detect and stop gracefully")
-                    except Exception as e:
-                        st.error(f"❌ Error creating stop file: {str(e)}")
-            
-            with col2:
-                if st.button("⚡ Force Stop All Python", type="secondary", help="Force terminate all Python processes (use with caution)"):
-                    st.warning("🔥 This will force-stop ALL Python processes!")
-                    if st.button("⚠️ Confirm Force Stop", type="secondary"):
-                        try:
-                            import subprocess
-                            result = subprocess.run(['taskkill', '/F', '/IM', 'python.exe'], 
-                                                  capture_output=True, text=True)
-                            if result.returncode == 0:
-                                st.success("✅ Force stopped all Python processes")
-                            else:
-                                st.error(f"❌ Failed to stop processes: {result.stderr}")
-                        except Exception as e:
-                            st.error(f"❌ Error force stopping: {str(e)}")
-            
-            with col3:
-                st.markdown("**Instructions:**")
-                st.markdown("1. Try graceful stop first")
-                st.markdown("2. Use force stop only if needed")
-                st.markdown("3. Training will finish current iteration")
+                    st.metric("Status", "🟡 Simulation", "Demo mode")
     
     # Enhanced Training metrics and model versioning
     if st.session_state.training_active or st.session_state.training_metrics:
@@ -3518,525 +3052,242 @@ def show_training():
 def show_backtesting():
     """Show backtesting interface."""
     st.title("📊 Backtesting")
-    
     # Model selection
-    # Get absolute path to models directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))  # gui directory
-    project_root = os.path.dirname(current_dir)  # ai-ppo directory  
-    model_dir = os.path.join(project_root, "models")
-    
-    model_files = []
-    if os.path.exists(model_dir):
-        model_files = [f for f in os.listdir(model_dir) if f.endswith('.pt')]
-    
+    try:
+        model_files = [f for f in os.listdir("models")] if os.path.isdir("models") else []
+    except (OSError, PermissionError):
+        model_files = []
+    model_files = [f for f in model_files if f.endswith('.pt')]
     if not model_files:
         st.warning("No trained models found. Please train a model first.")
-        st.info(f"Looking for models in: {model_dir}")
-        if os.path.exists(model_dir):
-            st.info(f"Directory exists but no .pt files found")
-            all_files = os.listdir(model_dir)
-            st.info(f"Files in directory: {all_files[:10]}...")  # Show first 10 files
-        else:
-            st.error(f"Models directory does not exist: {model_dir}")
         return
-    
+
     selected_model = st.selectbox("Select Model", model_files)
-    
+
     # Backtest parameters
     col1, col2 = st.columns(2)
-    
     with col1:
-        start_date = st.date_input(
-            "Backtest Start Date", 
-            value=datetime.now() - timedelta(days=365),
-            format="YYYY-MM-DD"
-        )
+        start_date = st.date_input("Backtest Start Date", value=datetime.now() - timedelta(days=365))
         initial_balance = st.number_input("Initial Balance ($)", value=10000, min_value=1000, step=1000)
-    
     with col2:
-        end_date = st.date_input(
-            "Backtest End Date", 
-            value=datetime.now(),
-            format="YYYY-MM-DD"
-        )
-        symbols = st.session_state.config.get('trading', {}).get('symbols', ['BTCUSDT'])
+        end_date = st.date_input("Backtest End Date", value=datetime.now())
+        symbols = st.session_state.get('config', {}).get('trading', {}).get('symbols', ['AAPL'])
         selected_symbol = st.selectbox("Symbol", symbols)
-    
+
     # Advanced options
     with st.expander("Advanced Options"):
-        create_dashboard = st.checkbox("Create Visualization Dashboard", value=True)
-        walk_forward = st.checkbox("Run Walk-Forward Analysis", value=False)
         benchmark_comparison = st.checkbox("Compare with Buy & Hold", value=True)
-    
-    if st.button("� Run Backtest"):
+
+    if st.button("🚀 Run Backtest", use_container_width=True):
         with st.spinner("Running backtest..."):
+            # Map explicit date range to a period suitable for provider
+            def _range_to_period(sd, ed):
+                sd2 = pd.to_datetime(sd)
+                ed2 = pd.to_datetime(ed)
+                days = max(1, (ed2 - sd2).days)
+                if days <= 31:
+                    return '1mo'
+                if days <= 92:
+                    return '3mo'
+                if days <= 185:
+                    return '6mo'
+                if days <= 365:
+                    return '1y'
+                if days <= 730:
+                    return '2y'
+                if days <= 1825:
+                    return '5y'
+                return '10y'
+
+            # Start from current UI config, but prefer model's training config if available
+            cfg = st.session_state.get('config') or create_default_config()
+            model_path = os.path.join("models", selected_model)
             try:
-                st.info(f"🔄 Loading model: {selected_model}")
-                model_path = os.path.join(model_dir, selected_model)
-                
-                # Initialize DataClient with current configuration  
-                data_client = DataClient(st.session_state.config)
-                
-                # Get timeframe from config
-                timeframe = st.session_state.config.get('trading', {}).get('timeframe', '5m')
-                
-                st.info(f"📊 Loading historical data for {selected_symbol} (timeframe: {timeframe})")
-                
-                # Load real historical data for backtest period
-                # Convert date inputs to period for data loading
-                days_diff = (end_date - start_date).days
-                if days_diff <= 30:
-                    period = "1mo"
-                elif days_diff <= 90:
-                    period = "3mo"
-                elif days_diff <= 180:
-                    period = "6mo" 
-                elif days_diff <= 365:
-                    period = "1y"
-                else:
-                    period = "2y"
-                
-                # Load real market data
-                historical_data = data_client.get_historical_data(
-                    symbol=selected_symbol,
-                    period=period,
-                    interval=timeframe
-                )
-                
-                if historical_data is None or historical_data.empty:
-                    st.error(f"❌ Could not load historical data for {selected_symbol}")
-                    st.info("Please check your data source configuration and try again")
-                    return
-                    
-                # Filter data to exact backtest period
-                historical_data = historical_data.loc[
-                    (historical_data.index.date >= start_date) & 
-                    (historical_data.index.date <= end_date)
-                ]
-                
-                if len(historical_data) < 50:
-                    st.warning(f"⚠️ Limited data available: {len(historical_data)} data points")
-                    st.info("Consider using a longer time period or different timeframe")
-                
-                st.success(f"✅ Loaded {len(historical_data)} data points for backtesting")
-                
-                # Debug: Check available columns
-                st.info(f"📋 Available data columns: {list(historical_data.columns)}")
-                
-                # Extract price data - handle different column name formats
-                price_column = None
-                possible_price_columns = ['close', 'Close', 'CLOSE', 'price', 'Price', 'PRICE']
-                
-                for col in possible_price_columns:
-                    if col in historical_data.columns:
-                        price_column = col
-                        break
-                
-                if price_column is None:
-                    # If no standard price column, use the first numeric column
-                    numeric_columns = historical_data.select_dtypes(include=[np.number]).columns
-                    if len(numeric_columns) > 0:
-                        price_column = numeric_columns[0]
-                        st.warning(f"⚠️ Using column '{price_column}' as price data")
-                    else:
-                        st.error("❌ No numeric price data found in historical data")
-                        return
-                else:
-                    st.info(f"📊 Using '{price_column}' column for price data")
-                
-                prices = historical_data[price_column].values
-                dates = historical_data.index
-                
-                # Simulate trading signals (basic momentum strategy for demo)
-                # TODO: Replace with actual PPO model predictions
-                positions = []
-                portfolio_values = []
-                buy_signals = []
-                sell_signals = []
-                
-                cash = initial_balance
-                shares = 0
-                position = 0  # 0 = cash, 1 = long
-                
-                # Load PPO model for predictions
-                st.info(f"🤖 Loading PPO model for trading predictions...")
-                
-                try:
-                    # Import required classes
-                    from agents import PPOAgent
-                    from environments import TradingEnvironment
-                    from data import prepare_features
-                    import torch
-                    
-                    # Load model checkpoint
-                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                    checkpoint = torch.load(model_path, map_location=device)
-                    
-                    # Prepare data for PPO environment (need features)
-                    full_data = historical_data.copy()
-                    full_data['close'] = full_data[price_column]  # Ensure 'close' column exists
-                    
-                    # Prepare features for the environment
-                    feature_data = prepare_features(full_data, st.session_state.config)
-                    
-                    st.info(f"✅ Prepared {len(feature_data)} feature rows for PPO predictions")
-                    
-                    # Create temporary environment to get dimensions
-                    temp_env = TradingEnvironment(feature_data.head(100), st.session_state.config)
-                    obs_dim = temp_env.observation_space.shape[0]
-                    action_dim = temp_env.action_space.n  # Should be 3: SELL=0, HOLD=1, BUY=2
-                    
-                    # Check for model compatibility
-                    expected_obs_dim = None
-                    if isinstance(checkpoint, dict) and 'policy_net_state_dict' in checkpoint:
-                        # Try to extract the expected input dimension from the model
-                        first_layer_key = 'network.0.weight'
-                        if first_layer_key in checkpoint['policy_net_state_dict']:
-                            expected_obs_dim = checkpoint['policy_net_state_dict'][first_layer_key].shape[1]
-                            st.info(f"🔍 Model expects {expected_obs_dim} features, current environment provides {obs_dim}")
-                            
-                            if expected_obs_dim != obs_dim:
-                                st.warning(f"⚠️ Feature dimension mismatch detected!")
-                                st.info(f"   Model expects: {expected_obs_dim} features")
-                                st.info(f"   Environment provides: {obs_dim} features")
-                                st.info(f"   Adjusting environment to match model...")
-                                
-                                # Adjust lookback window to match expected dimensions
-                                # Calculate required market features: expected_obs_dim = (market_features + 4) * lookback_window
-                                lookback_window = st.session_state.config.get('environment', {}).get('lookback_window', 50)
-                                required_market_features = (expected_obs_dim // lookback_window) - 4
-                                current_market_features = len(temp_env.feature_columns)
-                                
-                                st.info(f"   Current market features: {current_market_features}")
-                                st.info(f"   Required market features: {required_market_features}")
-                                
-                                if required_market_features < current_market_features:
-                                    # Trim features to match the model
-                                    features_to_keep = temp_env.feature_columns[:required_market_features]
-                                    st.info(f"   Keeping first {required_market_features} features: {features_to_keep[:5]}...")
-                                    
-                                    # Create new feature data with only the required features
-                                    adjusted_feature_data = feature_data[features_to_keep + ['Close_raw']].copy()
-                                    
-                                    # Recreate environment with adjusted features
-                                    temp_env = TradingEnvironment(adjusted_feature_data.head(100), st.session_state.config)
-                                    obs_dim = temp_env.observation_space.shape[0]
-                                    feature_data = adjusted_feature_data
-                                    
-                                    st.success(f"✅ Adjusted to {obs_dim} features to match model")
-                    
-                    # Create PPO agent
-                    agent = PPOAgent(obs_dim, action_dim, st.session_state.config)
-                    
-                    # Load model weights
-                    if isinstance(checkpoint, dict):
-                        if 'policy_net_state_dict' in checkpoint:
-                            agent.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
-                        elif 'model_state_dict' in checkpoint:
-                            agent.policy_net.load_state_dict(checkpoint['model_state_dict'])
-                        else:
-                            agent.policy_net.load_state_dict(checkpoint)
-                    else:
-                        agent.policy_net.load_state_dict(checkpoint)
-                    
-                    agent.policy_net.eval()  # Set to evaluation mode
-                    st.success(f"✅ PPO model loaded successfully on {device}")
-                    
-                    # Create full environment for backtesting
-                    env = TradingEnvironment(feature_data, st.session_state.config)
-                    obs = env.reset()
-                    
-                    ppo_predictions = []
-                    
-                except Exception as e:
-                    st.error(f"❌ Error loading PPO model: {str(e)}")
-                    st.warning("🔄 Falling back to momentum strategy")
-                    agent = None
-                    env = None
-                
-                for i, (date, price) in enumerate(zip(dates, prices)):
-                    action = 1  # Default to HOLD
-                    
-                    if i >= 20:  # Need some history for both strategies
-                        if agent is not None and env is not None:
-                            try:
-                                # Use PPO model for predictions
-                                if i < len(feature_data):
-                                    with torch.no_grad():
-                                        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
-                                        action_probs = agent.policy_net(obs_tensor)
-                                        action = torch.argmax(action_probs, dim=-1).item()
-                                        ppo_predictions.append(action)
-                                    
-                                    # Step environment to get next observation
-                                    if i + 1 < len(feature_data):
-                                        obs, _, _, _ = env.step(action)
-                                else:
-                                    action = 1  # HOLD if beyond feature data
-                            except Exception as e:
-                                # Fallback to momentum strategy on any error
-                                sma_5 = np.mean(prices[max(0, i-4):i+1])
-                                sma_20 = np.mean(prices[max(0, i-19):i+1])
-                                
-                                if position == 0 and sma_5 > sma_20 * 1.02:
-                                    action = 2  # BUY
-                                elif position == 1 and sma_5 < sma_20 * 0.98:
-                                    action = 0  # SELL
-                                else:
-                                    action = 1  # HOLD
-                        else:
-                            # Fallback momentum strategy
-                            sma_5 = np.mean(prices[max(0, i-4):i+1])
-                            sma_20 = np.mean(prices[max(0, i-19):i+1])
-                            
-                            if position == 0 and sma_5 > sma_20 * 1.02:
-                                action = 2  # BUY
-                            elif position == 1 and sma_5 < sma_20 * 0.98:
-                                action = 0  # SELL
-                            else:
-                                action = 1  # HOLD
-                        
-                        # Execute trading action
-                        if action == 2 and position == 0:  # BUY
-                            shares = cash / price * 0.95  # Leave some cash for fees
-                            cash = cash * 0.05
-                            position = 1
-                            buy_signals.append({'date': date, 'price': price})
-                        elif action == 0 and position == 1:  # SELL
-                            cash = shares * price * 0.999  # Account for fees
-                            shares = 0
-                            position = 0
-                            sell_signals.append({'date': date, 'price': price})
-                        # HOLD (action == 1) requires no action
-                    
-                    # Calculate current portfolio value
-                    portfolio_value = cash + (shares * price)
-                    portfolio_values.append(portfolio_value)
-                    positions.append(position)
-                
-                # Calculate performance metrics
-                final_value = portfolio_values[-1]
-                total_return = (final_value / initial_balance - 1) * 100
-                
-                # Buy and hold benchmark
-                buy_hold_shares = initial_balance / prices[0]
-                buy_hold_final = buy_hold_shares * prices[-1]
-                benchmark_return = (buy_hold_final / initial_balance - 1) * 100
-                excess_return = total_return - benchmark_return
-                
-                # Calculate additional metrics
-                daily_returns = np.diff(portfolio_values) / portfolio_values[:-1]
-                if len(daily_returns) > 1 and np.std(daily_returns) > 0:
-                    sharpe_ratio = np.mean(daily_returns) / np.std(daily_returns) * np.sqrt(252)
-                else:
-                    sharpe_ratio = 0
-                
-                # Calculate max drawdown
-                peak = np.maximum.accumulate(portfolio_values)
-                drawdown = (np.array(portfolio_values) - peak) / peak
-                max_drawdown = np.min(drawdown) * 100
-                
-                # Display results
-                st.subheader("🎯 Backtest Results")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Final Portfolio Value", f"${final_value:,.2f}")
-                
-                with col2:
-                    st.metric("Total Return", f"{total_return:.2f}%", f"{excess_return:+.2f}%")
-                
-                with col3:
-                    st.metric("Sharpe Ratio", f"{sharpe_ratio:.3f}")
-                
-                with col4:
-                    st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
-                
-                # Trading activity
-                st.subheader("📈 Trading Activity")
-                
-                trade_col1, trade_col2, trade_col3, trade_col4 = st.columns(4)
-                
-                with trade_col1:
-                    st.metric("Total Trades", len(buy_signals) + len(sell_signals))
-                
-                with trade_col2:
-                    st.metric("Buy Orders", len(buy_signals))
-                
-                with trade_col3:
-                    st.metric("Sell Orders", len(sell_signals))
-                
-                with trade_col4:
-                    if len(buy_signals) > 0 and len(sell_signals) > 0:
-                        profitable_trades = sum(1 for b, s in zip(buy_signals, sell_signals) if s['price'] > b['price'])
-                        win_rate = (profitable_trades / min(len(buy_signals), len(sell_signals))) * 100
-                    else:
-                        win_rate = 0
-                    st.metric("Win Rate", f"{win_rate:.1f}%")
-                
-                # Performance chart
-                st.subheader("📊 Portfolio Performance vs Buy & Hold")
-                
-                fig = go.Figure()
-                
-                # Portfolio performance
-                fig.add_trace(go.Scatter(
-                    x=dates,
-                    y=portfolio_values,
-                    mode='lines',
-                    name='AI Strategy',
-                    line=dict(color='#00ff00', width=2)
-                ))
-                
-                # Buy and hold benchmark
-                buy_hold_values = [initial_balance * (prices[i] / prices[0]) for i in range(len(prices))]
-                fig.add_trace(go.Scatter(
-                    x=dates,
-                    y=buy_hold_values,
-                    mode='lines',
-                    name='Buy & Hold',
-                    line=dict(color='#ff6b6b', width=2, dash='dash')
-                ))
-                
-                fig.update_layout(
-                    title=f"{selected_symbol} Backtest Results ({start_date} to {end_date})",
-                    xaxis_title="Date",
-                    yaxis_title="Portfolio Value ($)",
-                    hovermode='x unified',
-                    height=500
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Price chart with trading signals
-                st.subheader("📈 Price Chart with Trading Signals")
-                
-                fig2 = go.Figure()
-                
-                # Price line
-                fig2.add_trace(go.Scatter(
-                    x=dates,
-                    y=prices,
-                    mode='lines',
-                    name=f'{selected_symbol} Price',
-                    line=dict(color='#1f77b4', width=2)
-                ))
-                
-                # Buy signals
-                if buy_signals:
-                    buy_dates = [s['date'] for s in buy_signals]
-                    buy_prices = [s['price'] for s in buy_signals]
-                    fig2.add_trace(go.Scatter(
-                        x=buy_dates,
-                        y=buy_prices,
-                        mode='markers',
-                        name='Buy Signals',
-                        marker=dict(symbol='triangle-up', size=12, color='green')
-                    ))
-                
-                # Sell signals
-                if sell_signals:
-                    sell_dates = [s['date'] for s in sell_signals]
-                    sell_prices = [s['price'] for s in sell_signals]
-                    fig2.add_trace(go.Scatter(
-                        x=sell_dates,
-                        y=sell_prices,
-                        mode='markers',
-                        name='Sell Signals',
-                        marker=dict(symbol='triangle-down', size=12, color='red')
-                    ))
-                
-                fig2.update_layout(
-                    title=f"{selected_symbol} Price with Trading Signals",
-                    xaxis_title="Date",
-                    yaxis_title="Price ($)",
-                    height=500
-                )
-                
-                st.plotly_chart(fig2, use_container_width=True)
-                
-                # Trade history table
-                if buy_signals or sell_signals:
-                    st.subheader("📋 Trade History")
-                    
-                    all_trades = []
-                    for signal in buy_signals:
-                        all_trades.append({
-                            'Date': signal['date'].strftime('%Y-%m-%d'),
-                            'Action': '🟢 BUY',
-                            'Price': f"${signal['price']:.2f}",
-                            'Type': 'Market Order'
-                        })
-                    
-                    for signal in sell_signals:
-                        all_trades.append({
-                            'Date': signal['date'].strftime('%Y-%m-%d'),
-                            'Action': '🔴 SELL',
-                            'Price': f"${signal['price']:.2f}",
-                            'Type': 'Market Order'
-                        })
-                    
-                    # Sort by date
-                    all_trades.sort(key=lambda x: x['Date'])
-                    
-                    if all_trades:
-                        trades_df = pd.DataFrame(all_trades)
-                        st.dataframe(trades_df, use_container_width=True, hide_index=True)
-                
-                st.success("✅ Backtest completed successfully!")
-                if agent is not None:
-                    st.info("🤖 Note: Using real market data with trained PPO model predictions!")
-                    if len(ppo_predictions) > 0:
-                        action_counts = {0: ppo_predictions.count(0), 1: ppo_predictions.count(1), 2: ppo_predictions.count(2)}
-                        st.info(f"📊 PPO Actions: {action_counts[0]} SELL, {action_counts[1]} HOLD, {action_counts[2]} BUY")
-                else:
-                    st.warning("⚠️ Note: PPO model failed to load, used fallback momentum strategy with real market data.")
-                
+                import torch
+                ckpt = torch.load(model_path, map_location='cpu')
+                saved_cfg = ckpt.get('config') if isinstance(ckpt, dict) else None
+                if isinstance(saved_cfg, dict) and saved_cfg:
+                    cfg = saved_cfg
+                    st.info("Using model's training configuration for backtest to match features and network shape.")
             except Exception as e:
-                st.error(f"❌ Error running backtest: {str(e)}")
-                import traceback
-                st.code(traceback.format_exc())
+                st.warning(f"Could not read model config from checkpoint; using current settings. ({e})")
+
+            # Always override symbol from UI selection
+            cfg.setdefault('trading', {})
+            cfg['trading']['symbols'] = [selected_symbol]
+
+            data_client = DataClient(cfg)
+            interval = cfg.get('trading', {}).get('timeframe', '1h')
+            period = _range_to_period(start_date, end_date)
+
+            raw = data_client.get_historical_data(selected_symbol, period, interval)
+            if raw is None or raw.empty:
+                st.error("No historical data fetched for the selected range.")
+                return
+
+            # Trim to requested range with timezone awareness
+            idx = raw.index
+            tz = getattr(idx, 'tz', None)
+            if tz is not None:
+                start_ts = pd.Timestamp(start_date).tz_localize(tz)
+                # Include entire end day
+                end_ts = (pd.Timestamp(end_date) + pd.Timedelta(days=1)).tz_localize(tz) - pd.Timedelta(microseconds=1)
+            else:
+                start_ts = pd.Timestamp(start_date)
+                end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+            df_raw = raw[(idx >= start_ts) & (idx <= end_ts)]
+            if df_raw.empty:
+                st.error("No data within selected start/end dates. Try expanding the range.")
+                return
+
+            data = prepare_features(df_raw, cfg)
+            if data.empty:
+                st.error("Feature preparation returned empty data.")
+                return
+
+            # Agent and backtester
+            temp_env = TradingEnvironment(data, cfg)
+            obs_dim = temp_env.observation_space.shape[0]
+            agent = PPOAgent(obs_dim, 3, cfg)
+            agent.load(model_path)
+            # Ensure inference-only behavior (disable dropout/batchnorm randomness)
+            try:
+                agent.policy_net.eval()
+                agent.value_net.eval()
+            except Exception:
+                pass
+
+            backtester = Backtester(cfg)
+            results = backtester.run_backtest(
+                agent=agent,
+                data=data,
+                start_date=pd.to_datetime(start_date).strftime('%Y-%m-%d'),
+                end_date=pd.to_datetime(end_date).strftime('%Y-%m-%d'),
+                initial_balance=float(initial_balance),
+                deterministic=True
+            )
+
+            bt = results.get('backtest_metrics', {})
+            perf = results.get('performance_metrics', {})
+            detailed = results.get('detailed_results', {})
+
+            st.subheader("Backtest Results")
+            # If no trades, optionally rerun with stochastic policy
+            total_trades = bt.get('total_trades', 0)
+            if total_trades == 0:
+                st.warning("No trades were executed with deterministic policy. Retrying with stochastic sampling to diagnose behavior…")
+                results_sto = backtester.run_backtest(
+                    agent=agent,
+                    data=data,
+                    start_date=pd.to_datetime(start_date).strftime('%Y-%m-%d'),
+                    end_date=pd.to_datetime(end_date).strftime('%Y-%m-%d'),
+                    initial_balance=float(initial_balance),
+                    deterministic=False
+                )
+                bt_sto = results_sto.get('backtest_metrics', {})
+                trades_sto = bt_sto.get('total_trades', 0)
+                if trades_sto > 0:
+                    st.info(f"Stochastic run executed {trades_sto} trades. Deterministic policy may be strongly preferring HOLD.")
+                else:
+                    st.warning("Even with stochastic sampling, no trades occurred. This suggests a configuration mismatch or a policy that learned to HOLD.")
+                # Prefer the deterministic result for displayed metrics, but show action distributions for both
+                detailed_sto = results_sto.get('detailed_results', {})
+                actions_det = pd.Series(detailed.get('actions', []), name='Deterministic')
+                actions_sto = pd.Series(detailed_sto.get('actions', []), name='Stochastic')
+                dist_df = pd.concat([
+                    actions_det.value_counts().rename(index={0:'SELL',1:'HOLD',2:'BUY'}),
+                    actions_sto.value_counts().rename(index={0:'SELL',1:'HOLD',2:'BUY'})
+                ], axis=1).fillna(0).astype(int)
+                st.subheader("Action Distribution (Deterministic vs Stochastic)")
+                st.dataframe(dist_df)
+
+            # Show effective trading parameters
+            tcfg = cfg.get('trading', {})
+            st.caption(f"Params: max_position_size={tcfg.get('max_position_size', 0.1)}, fee={tcfg.get('transaction_cost', 0.001)}, slippage={tcfg.get('slippage', 0.0005)}")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Final Portfolio Value", format_currency(bt.get('final_portfolio_value', initial_balance)))
+            with col2:
+                st.metric("Total Return", format_percentage(bt.get('total_return', 0)))
+            with col3:
+                st.metric("Sharpe Ratio", f"{perf.get('sharpe_ratio', 0):.3f}")
+            with col4:
+                st.metric("Max Drawdown", format_percentage(perf.get('max_drawdown', 0)))
+
+            # Chart data
+            dates = pd.to_datetime(detailed.get('dates', []))
+            prices = pd.Series(detailed.get('prices', []), index=dates)
+            portfolio_values = pd.Series(detailed.get('portfolio_values', []), index=dates)
+
+            # Build benchmark
+            benchmark_values = None
+            if benchmark_comparison and not prices.empty:
+                base_price = prices.iloc[0]
+                if base_price:
+                    benchmark_values = (prices / base_price) * float(initial_balance)
+
+            # Signals
+            buy_dates, buy_prices, sell_dates, sell_prices = [], [], [], []
+            for i, tr in enumerate(detailed.get('trades', [])):
+                if not tr or 'shares_traded' not in tr or i >= len(dates):
+                    continue
+                if tr['shares_traded'] > 0:
+                    buy_dates.append(dates[i])
+                    buy_prices.append(prices.iloc[i] if i < len(prices) else None)
+                elif tr['shares_traded'] < 0:
+                    sell_dates.append(dates[i])
+                    sell_prices.append(prices.iloc[i] if i < len(prices) else None)
+
+            # Price chart
+            st.subheader("📈 Price Chart with Trading Signals")
+            fig = go.Figure()
+            if not prices.empty:
+                fig.add_trace(go.Scatter(x=prices.index, y=prices.values, mode='lines', name=f'{selected_symbol} Price',
+                                         line=dict(color='#1f77b4', width=2)))
+            if buy_dates:
+                fig.add_trace(go.Scatter(x=buy_dates, y=buy_prices, mode='markers', name='Buy Signals',
+                                         marker=dict(symbol='triangle-up', size=12, color='#00ff00',
+                                                     line=dict(color='#008000', width=2))))
+            if sell_dates:
+                fig.add_trace(go.Scatter(x=sell_dates, y=sell_prices, mode='markers', name='Sell Signals',
+                                         marker=dict(symbol='triangle-down', size=12, color='#ff0000',
+                                                     line=dict(color='#800000', width=2))))
+            fig.update_layout(title=f"{selected_symbol} Price with AI Trading Signals", xaxis_title="Date",
+                              yaxis_title="Price ($)", height=600, legend=dict(x=0, y=1), hovermode='closest',
+                              showlegend=True, **get_plotly_theme())
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Portfolio performance
+            st.subheader("📊 Portfolio Performance")
+            fig2 = go.Figure()
+            if not portfolio_values.empty:
+                fig2.add_trace(go.Scatter(x=portfolio_values.index, y=portfolio_values.values, mode='lines',
+                                          name='AI Strategy', line=dict(color='blue', width=2)))
+            if benchmark_values is not None:
+                fig2.add_trace(go.Scatter(x=benchmark_values.index, y=benchmark_values.values, mode='lines',
+                                          name='Buy & Hold', line=dict(color='gray', width=2, dash='dash')))
+            fig2.update_layout(title="Portfolio Performance Comparison", xaxis_title="Date",
+                               yaxis_title="Portfolio Value ($)", **get_plotly_theme())
+            st.plotly_chart(fig2, use_container_width=True)
 
 @handle_errors
 def show_live_trading():
-    """Show live trading interface with real portfolio management."""
+    """Show live trading interface."""
     st.title("📡 Live Trading Monitor")
     
     st.markdown("""
     <div class="warning-box">
         <strong>⚠️ IMPORTANT DISCLAIMER</strong><br>
-        This system uses real market data and tracks actual portfolio performance. 
-        Paper trading mode executes simulated trades with live prices.
-        Live trading involves substantial risk of loss - only enable when ready.
+        This is a demonstration interface. Live trading involves substantial risk of loss. 
+        Always use paper trading first and never risk more than you can afford to lose.
     </div>
     """, unsafe_allow_html=True)
     
-    # Initialize portfolio manager
-    if 'portfolio_manager' not in st.session_state:
-        try:
-            from data import DataClient
-            from trading.portfolio_manager import PortfolioManager, OrderSide, OrderType
-            
-            # Initialize data client for live prices
-            data_client = DataClient(st.session_state.config)
-            
-            # Initialize portfolio manager
-            initial_balance = st.session_state.config.get('trading', {}).get('initial_balance', 10000)
-            st.session_state.portfolio_manager = PortfolioManager(
-                initial_balance=initial_balance,
-                data_client=data_client,
-                live_trading=False  # Start in paper trading mode
-            )
-        except Exception as e:
-            st.error(f"Error initializing portfolio manager: {e}")
-            return
-    
-    # Trading status controls
-    col1, col2, col3, col4 = st.columns(4)
+    # Trading status
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        trading_active = st.checkbox("Enable Trading", value=True)
+        trading_active = st.checkbox("Enable Live Trading", value=False)
     
     with col2:
         paper_trading = st.checkbox("Paper Trading Mode", value=True)
@@ -4044,26 +3295,12 @@ def show_live_trading():
     with col3:
         auto_trading = st.checkbox("Automatic Trading", value=False)
     
-    with col4:
-        if st.button("Reset Portfolio", type="secondary"):
-            st.session_state.portfolio_manager.reset_portfolio()
-            st.success("Portfolio reset to initial state")
-            st.rerun()
-    
-    # Update portfolio manager mode
-    st.session_state.portfolio_manager.live_trading = trading_active and not paper_trading
-    
     if trading_active and not paper_trading:
         st.error("🚨 LIVE TRADING ENABLED - REAL MONEY AT RISK!")
     elif trading_active and paper_trading:
-        st.success("📝 Live paper trading - Real data, simulated trades")
-    else:
-        st.info("🔒 Trading disabled")
+        st.success("📝 Paper trading mode - Safe to experiment")
     
-    # Get live portfolio data
-    portfolio_summary = st.session_state.portfolio_manager.get_portfolio_summary()
-    
-    # Portfolio overview with real data
+    # Portfolio overview with enhanced styling
     st.markdown('<div class="portfolio-overview">', unsafe_allow_html=True)
     st.subheader("💼 Portfolio Overview")
     
@@ -4072,32 +3309,32 @@ def show_live_trading():
     with col1:
         st.metric(
             label="Portfolio Value",
-            value=f"${portfolio_summary['portfolio_value']:,.2f}",
-            delta=f"${portfolio_summary['total_pnl']:+,.2f} ({portfolio_summary['total_pnl_percent']:+.2f}%)",
-            delta_color="normal" if portfolio_summary['total_pnl'] >= 0 else "inverse"
+            value="$10,234.56",
+            delta="+$124.32 (+1.2%)",
+            delta_color="normal"
         )
     
     with col2:
         st.metric(
             label="Cash Balance", 
-            value=f"${portfolio_summary['cash_balance']:,.2f}",
-            delta=f"${portfolio_summary['positions_value']:,.2f} in positions",
-            delta_color="normal"
+            value="$2,456.78",
+            delta="-$12.34 (-0.5%)",
+            delta_color="inverse"
         )
     
     with col3:
         st.metric(
-            label="Total Return",
-            value=f"${portfolio_summary['total_pnl']:+,.2f}",
-            delta=f"{portfolio_summary['total_pnl_percent']:+.2f}%",
-            delta_color="normal" if portfolio_summary['total_pnl'] >= 0 else "inverse"
+            label="Today's P&L",
+            value="+$123.45",
+            delta="+1.21%",
+            delta_color="normal"
         )
     
     with col4:
         st.metric(
             label="Open Positions",
-            value=str(portfolio_summary['open_positions']),
-            delta=f"{portfolio_summary['total_trades']} total trades",
+            value="3",
+            delta="+1",
             delta_color="normal"
         )
     
@@ -4105,83 +3342,50 @@ def show_live_trading():
     
     # Current positions with enhanced styling
     st.subheader("📊 Current Positions")
-    # Display current positions
-    if portfolio_summary['open_positions'] > 0:
-        positions_data = {
-            'Symbol': [],
-            'Quantity': [],
-            'Avg Price': [],
-            'Current Price': [],
-            'Market Value': [],
-            'P&L': [],
-            'P&L %': []
-        }
-        
-        for symbol, position in st.session_state.portfolio_manager.positions.items():
-            positions_data['Symbol'].append(symbol)
-            positions_data['Quantity'].append(f"{position.quantity:.4f}")
-            positions_data['Avg Price'].append(f"${position.avg_price:.2f}")
-            positions_data['Current Price'].append(f"${position.current_price:.2f}")
-            positions_data['Market Value'].append(f"${position.market_value:.2f}")
-            
-            pnl = position.unrealized_pnl
-            pnl_pct = position.unrealized_pnl_percent
-            
-            positions_data['P&L'].append(f"${pnl:+.2f}")
-            
-            if pnl_pct >= 0:
-                positions_data['P&L %'].append(f"📈 {pnl_pct:+.2f}%")
-            else:
-                positions_data['P&L %'].append(f"� {pnl_pct:+.2f}%")
-        
-        positions_df = pd.DataFrame(positions_data)
-        
-        # Style the dataframe with conditional formatting
-        def style_pnl(val):
-            if '+' in str(val):
-                return 'background-color: rgba(40, 167, 69, 0.1); color: #28a745; font-weight: bold;'
-            elif '-' in str(val):
-                return 'background-color: rgba(220, 53, 69, 0.1); color: #dc3545; font-weight: bold;'
-            return ''
-        
-        styled_df = positions_df.style.map(style_pnl, subset=['P&L', 'P&L %'])
-        st.dataframe(styled_df, use_container_width=True)
-    else:
-        st.info("No open positions")
     
-    # Real-time market data
+    positions_data = {
+        'Symbol': ['🍎 AAPL', '🖥️ MSFT', '🔍 GOOGL'],
+        'Shares': [10, 15, 5],
+        'Avg Price': ['$175.50', '$415.20', '$2,750.30'],
+        'Current Price': ['$178.90', '$412.45', '$2,780.15'],
+        'Market Value': ['$1,789.00', '$6,186.75', '$13,900.75'],
+        'P&L': ['+$34.00', '-$41.25', '+$149.25'],
+        'P&L %': ['📈 +1.94%', '📉 -0.66%', '📈 +0.54%']
+    }
+    
+    positions_df = pd.DataFrame(positions_data)
+    
+    # Style the dataframe with conditional formatting
+    def style_pnl(val):
+        if '+' in str(val):
+            return 'background-color: rgba(40, 167, 69, 0.1); color: #28a745; font-weight: bold;'
+        elif '-' in str(val):
+            return 'background-color: rgba(220, 53, 69, 0.1); color: #dc3545; font-weight: bold;'
+        return ''
+    
+    styled_df = positions_df.style.map(style_pnl, subset=['P&L', 'P&L %'])
+    st.dataframe(styled_df, use_container_width=True)
+    
+    # Real-time quotes (simulated) with enhanced styling
     st.subheader("📈 Real-Time Market Data")
     
-    # Auto-refresh control and timestamp
+    # Auto-refresh control
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.markdown("*Live market data with trading signals*")
-        if 'portfolio_manager' in st.session_state:
-            st.caption(f"🟢 **LIVE DATA** - Last updated: {datetime.now().strftime('%H:%M:%S')}")
-        else:
-            st.caption("🟡 Demo data - Portfolio manager not initialized")
+        st.markdown("*Live market data with AI trading signals*")
     with col2:
-        auto_refresh = st.checkbox("🔄 Auto Refresh", value=False)
+        auto_refresh = st.checkbox("🔄 Auto Refresh (5s)", value=True)
+    
+    if auto_refresh:
+        time.sleep(1)  # Simulate delay
     
     quotes_data = {
-        'Symbol': ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT'],
-        'Price': [f"${st.session_state.portfolio_manager.get_current_price('BTCUSDT'):.2f}" if 'portfolio_manager' in st.session_state else '$95,234.56', 
-                  f"${st.session_state.portfolio_manager.get_current_price('ETHUSDT'):.2f}" if 'portfolio_manager' in st.session_state else '$3,456.78',
-                  f"${st.session_state.portfolio_manager.get_current_price('ADAUSDT'):.4f}" if 'portfolio_manager' in st.session_state else '$1.234',
-                  f"${st.session_state.portfolio_manager.get_current_price('SOLUSDT'):.2f}" if 'portfolio_manager' in st.session_state else '$234.56'],
-        'Change': [f"${st.session_state.portfolio_manager.get_current_price('BTCUSDT') * np.random.uniform(-0.05, 0.05):+.2f}" if 'portfolio_manager' in st.session_state else '+$1,250.30',
-                   f"${st.session_state.portfolio_manager.get_current_price('ETHUSDT') * np.random.uniform(-0.05, 0.05):+.2f}" if 'portfolio_manager' in st.session_state else '-$42.34',
-                   f"${st.session_state.portfolio_manager.get_current_price('ADAUSDT') * np.random.uniform(-0.05, 0.05):+.4f}" if 'portfolio_manager' in st.session_state else '+$0.067',
-                   f"${st.session_state.portfolio_manager.get_current_price('SOLUSDT') * np.random.uniform(-0.05, 0.05):+.2f}" if 'portfolio_manager' in st.session_state else '-$8.12'],
-        'Change %': [f"{np.random.uniform(-5, 5):+.2f}%" if 'portfolio_manager' in st.session_state else '+1.33%',
-                     f"{np.random.uniform(-5, 5):+.2f}%" if 'portfolio_manager' in st.session_state else '-1.21%',
-                     f"{np.random.uniform(-5, 5):+.2f}%" if 'portfolio_manager' in st.session_state else '+5.74%',
-                     f"{np.random.uniform(-5, 5):+.2f}%" if 'portfolio_manager' in st.session_state else '-3.35%'],
-        'Volume': [f"{np.random.uniform(1000, 3000):.0f}M" if 'portfolio_manager' in st.session_state else '2.1B',
-                   f"{np.random.uniform(500, 1500):.0f}M" if 'portfolio_manager' in st.session_state else '890M',
-                   f"{np.random.uniform(100, 500):.0f}M" if 'portfolio_manager' in st.session_state else '145M',
-                   f"{np.random.uniform(200, 800):.0f}M" if 'portfolio_manager' in st.session_state else '523M'],
-        'AI Signal': ['🟢 BUY', '🟡 HOLD', '🟢 BUY', '� SELL']
+        'Symbol': ['🍎 AAPL', '🖥️ MSFT', '🔍 GOOGL', '₿ BTC/USDT', '💎 ETH/USDT'],
+        'Price': ['$178.90', '$412.45', '$2,780.15', '$67,340.50', '$3,425.80'],
+        'Change': ['+$3.40', '-$2.75', '+$29.85', '+$1,250.30', '+$125.60'],
+        'Change %': ['+1.94%', '-0.66%', '+1.09%', '+1.89%', '+3.80%'],
+        'Volume': ['12.5M', '8.7M', '1.2M', '2.1B', '890M'],
+        'AI Signal': ['🟢 BUY', '🟡 HOLD', '🟢 BUY', '� BUY', '🟡 HOLD']
     }
     
     quotes_df = pd.DataFrame(quotes_data)
@@ -4212,19 +3416,13 @@ def show_live_trading():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        # Get symbols - prioritize crypto symbols for current data provider
-        crypto_symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
-        config_symbols = st.session_state.config.get('trading', {}).get('symbols', crypto_symbols)
-        
-        # Ensure we have some symbols available
-        available_symbols = config_symbols if config_symbols else crypto_symbols
-        trade_symbol = st.selectbox("Symbol", available_symbols)
+        trade_symbol = st.selectbox("Symbol", ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'])
     
     with col2:
         trade_action = st.selectbox("Action", ['BUY', 'SELL'])
     
     with col3:
-        trade_quantity = st.number_input("Quantity", min_value=0.0001, value=0.01, step=0.0001, format="%.4f")
+        trade_quantity = st.number_input("Quantity", min_value=1, value=10)
     
     with col4:
         order_type = st.selectbox("Order Type", ['Market', 'Limit', 'Stop'])
@@ -4233,80 +3431,10 @@ def show_live_trading():
         limit_price = st.number_input("Limit Price", min_value=0.01, value=100.00, step=0.01)
     
     if st.button(f"Submit {trade_action} Order", type="primary"):
-        try:
-            # Get current price for order
-            current_price = st.session_state.portfolio_manager.get_current_price(trade_symbol)
-            
-            # Set order price based on order type
-            if order_type == 'Market':
-                order_price = current_price
-            elif order_type == 'Limit':
-                order_price = limit_price
-            else:  # Stop order
-                order_price = current_price  # Simplified for demo
-            
-            # Submit order through portfolio manager
-            if trade_action == 'BUY':
-                order_id = st.session_state.portfolio_manager.buy(
-                    symbol=trade_symbol,
-                    quantity=trade_quantity,
-                    price=order_price
-                )
-            else:  # SELL
-                order_id = st.session_state.portfolio_manager.sell(
-                    symbol=trade_symbol,
-                    quantity=trade_quantity,
-                    price=order_price
-                )
-            
-            if order_id:
-                mode = "Paper" if paper_trading else "Live"
-                st.success(f"✅ {mode} {trade_action} order submitted successfully!")
-                st.info(f"Order ID: {order_id}")
-                st.info(f"Symbol: {trade_symbol} | Quantity: {trade_quantity} | Price: ${order_price:.2f}")
-                
-                # Force refresh to show updated portfolio
-                st.rerun()
-            else:
-                st.error("❌ Order failed - insufficient funds or invalid parameters")
-                
-        except Exception as e:
-            st.error(f"❌ Error submitting order: {str(e)}")
-            st.error("Please check your connection and try again")
-    
-    # Demo trading section
-    st.subheader("🧪 Portfolio Testing")
-    st.markdown("*Test the portfolio system with sample trades*")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("🟢 Buy 0.01 BTC", type="secondary"):
-            try:
-                current_price = st.session_state.portfolio_manager.get_current_price('BTCUSDT')
-                order_id = st.session_state.portfolio_manager.buy('BTCUSDT', 0.01, current_price)
-                if order_id:
-                    st.success(f"✅ Bought 0.01 BTC at ${current_price:.2f}")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
-    
-    with col2:
-        if st.button("🟢 Buy 0.1 ETH", type="secondary"):
-            try:
-                current_price = st.session_state.portfolio_manager.get_current_price('ETHUSDT')
-                order_id = st.session_state.portfolio_manager.buy('ETHUSDT', 0.1, current_price)
-                if order_id:
-                    st.success(f"✅ Bought 0.1 ETH at ${current_price:.2f}")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
-    
-    with col3:
-        if st.button("🔴 Reset Portfolio", type="secondary"):
-            st.session_state.portfolio_manager.reset_portfolio()
-            st.success("✅ Portfolio reset to initial state")
-            st.rerun()
+        if paper_trading:
+            st.success(f"Paper trade submitted: {trade_action} {trade_quantity} shares of {trade_symbol}")
+        else:
+            st.error("Live trading not implemented - this is a demo interface")
 
 @handle_errors
 def show_model_management():
@@ -4339,7 +3467,11 @@ ai-ppo/
     
     # Get all model files
     try:
-        all_files = os.listdir(model_dir)
+        try:
+            all_files = os.listdir(model_dir)
+        except (OSError, PermissionError):
+            st.error("Unable to access model directory")
+            return
         model_files = [f for f in all_files if f.endswith('.pt')]
         
         st.success(f"✅ Models directory found: {len(all_files)} files total")
@@ -4564,8 +3696,7 @@ ai-ppo/
             with st.spinner(f"Exporting {export_model}..."):
                 time.sleep(2)  # Simulate export
                 st.success(f"✅ {export_model} exported successfully!")
-                file_extension = export_format.split('.')[-1][:-1]
-                st.info(f"💾 Exported as: {export_model.replace('.pt', f'_exported.{file_extension}')}")
+                st.info(f"💾 Exported as: {export_model.replace('.pt', f'_exported.{export_format.split(".")[-1][:-1]}')}") 
     
     with col2:
         st.markdown("**📥 Import Model**")

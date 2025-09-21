@@ -29,11 +29,11 @@ logging:
 network:
   activation: relu            # ReLU is faster than tanh
   policy_layers:
-  - 256
-  - 256                      # Reduced layer size for better memory efficiency
+  - 512
+  - 512
   value_layers:
-  - 256
-  - 256                      # Reduced layer size for better memory efficiency
+  - 512
+  - 512
 
 paths:
   data_dir: data
@@ -41,12 +41,12 @@ paths:
   model_dir: models
 
 ppo:
-  batch_size: 512            # Increased for better stability
+  batch_size: 256             # Larger batch size for better GPU utilization
   clip_range: 0.2
-  ent_coef: 0.005           # Reduced for more focused learning
+  ent_coef: 0.01
   gae_lambda: 0.95
   gamma: 0.99
-  learning_rate: 0.0003     # Reduced for better stability
+  learning_rate: 0.001        # Higher learning rate for faster convergence
   max_grad_norm: 0.5
   n_epochs: 4                 # Reduced epochs for faster training
   n_steps: 4096               # Larger buffer for better sampling
@@ -60,7 +60,7 @@ trading:
   - MSFT
   - GOOGL
   - BTC/USDT
-  timeframe: 5m
+  timeframe: 1h
   transaction_cost: 0.001
 
 tradingview:
