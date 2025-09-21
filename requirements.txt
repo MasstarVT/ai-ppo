@@ -42,3 +42,7 @@ streamlit-option-menu>=0.3.6
 streamlit-aggrid>=0.3.4
 dash>=2.14.0
 dash-bootstrap-components>=1.5.0
+
+# Brokerage / Exchange SDKs
+alpaca-py>=0.21.0
+python-binance>=1.0.19

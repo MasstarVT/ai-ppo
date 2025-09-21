@@ -57,9 +57,9 @@ gui_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(gui_dir)
 src_path = os.path.join(project_root, 'src')
 
-# Add src to path if not already there
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
+# Ensure project root is on sys.path so 'src.' imports work
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Debug: Print path information on first run
 if is_first_gui_run():
@@ -96,11 +96,11 @@ if 'components_loading_logged' not in st.session_state:
     st.session_state.components_loading_logged = True
 
 try:
-    from data import DataClient, prepare_features
-    from environments import TradingEnvironment
-    from agents import PPOAgent
-    from evaluation.backtesting import Backtester
-    from utils import ConfigManager, create_default_config, format_currency, format_percentage
+    from src.data import DataClient, prepare_features
+    from src.environments import TradingEnvironment
+    from src.agents import PPOAgent
+    from src.evaluation.backtesting import Backtester
+    from src.utils import ConfigManager, create_default_config, format_currency, format_percentage
     
     if 'core_components_logged' not in st.session_state:
         print("✅ Core components loaded")
@@ -108,7 +108,7 @@ try:
     
     # Try to import training manager (requires torch/numpy)
     try:
-        from utils import training_manager, BackgroundTrainingManager, NetworkAnalyzer
+        from src.utils import training_manager, BackgroundTrainingManager, NetworkAnalyzer
         TRAINING_MANAGER_AVAILABLE = True
         if 'training_manager_logged' not in st.session_state:
             print("✅ Background training manager available")
@@ -146,15 +146,15 @@ except ImportError as e:
                 if module_name == 'yaml':
                     import yaml
                 elif module_name == 'utils':
-                    from utils import ConfigManager
+                    from src.utils import ConfigManager
                 elif module_name == 'data':
-                    from data import DataClient
+                    from src.data import DataClient
                 elif module_name == 'environments':
-                    from environments import TradingEnvironment
+                    from src.environments import TradingEnvironment
                 elif module_name == 'agents':
-                    from agents import PPOAgent
+                    from src.agents import PPOAgent
                 elif module_name == 'evaluation.backtesting':
-                    from evaluation.backtesting import Backtester
+                    from src.evaluation.backtesting import Backtester
                 st.write(f"✅ {module_name}")
             except Exception as ex:
                 st.write(f"❌ {module_name}: {ex}")
@@ -3013,8 +3013,7 @@ def show_training():
     
     with col3:
         stop_button_text = "🛑 Stop Continuous Training" if st.session_state.get('training_mode') == 'continuous' else "🛑 Stop Training"
-        
-        if st.button(stop_button_text, disabled=not st.session_state.training_active, use_container_width=True):
+        if st.button(stop_button_text, disabled=not st.session_state.training_active, width='stretch'):
             # For continuous training, create stop file for graceful shutdown
             if st.session_state.get('training_mode') == 'continuous':
                 try:
@@ -3047,7 +3046,7 @@ def show_training():
             st.rerun()
     
     with col4:
-        if st.button("💾 Save Checkpoint", disabled=not st.session_state.training_active, use_container_width=True):
+        if st.button("💾 Save Checkpoint", disabled=not st.session_state.training_active, width='stretch'):
             st.success("💾 Checkpoint saved!")
             st.info("Model state saved for recovery")
     
@@ -3057,7 +3056,7 @@ def show_training():
     diag_col1, diag_col2 = st.columns(2)
     
     with diag_col1:
-        if st.button("🔍 Test Training Script", use_container_width=True):
+        if st.button("🔍 Test Training Script", width='stretch'):
             with st.spinner("Testing training script availability..."):
                 # Test if the training script exists and is runnable
                 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -3090,7 +3089,7 @@ def show_training():
                     st.info(f"Expected location: {train_script}")
     
     with diag_col2:
-        if st.button("🧪 Test Model Loading", use_container_width=True):
+        if st.button("🧪 Test Model Loading", width='stretch'):
             if available_models:
                 test_model = st.selectbox("Select model to test:", available_models, key="test_model")
                 
@@ -3396,7 +3395,7 @@ def show_training():
                     showlegend=True
                 )
                 
-                st.plotly_chart(fig_reward, use_container_width=True)
+                st.plotly_chart(fig_reward, width='stretch')
             
             with col2:
                 # Loss metrics
@@ -3424,7 +3423,7 @@ def show_training():
                     showlegend=True
                 )
                 
-                st.plotly_chart(fig_loss, use_container_width=True)
+                st.plotly_chart(fig_loss, width='stretch')
             
             # Current metrics with enhanced display
             if len(metrics_df) > 0:
@@ -3473,7 +3472,7 @@ def show_training():
                 help="How to name model versions"
             )
             
-            if st.button("💾 Save Current Model Version", use_container_width=True):
+            if st.button("💾 Save Current Model Version", width='stretch'):
                 if st.session_state.training_active:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     if versioning_scheme == "timestamp":
@@ -3509,7 +3508,7 @@ def show_training():
                 
                 # Model comparison option
                 if len(available_models) >= 2:
-                    if st.button("📊 Compare Model Versions", use_container_width=True):
+                    if st.button("📊 Compare Model Versions", width='stretch'):
                         st.info("🔄 Model comparison feature would show performance differences between versions")
             else:
                 st.info("💡 No model versions available yet. Train a model to see versions here.")
@@ -3663,9 +3662,9 @@ def show_backtesting():
                 
                 try:
                     # Import required classes
-                    from agents import PPOAgent
-                    from environments import TradingEnvironment
-                    from data import prepare_features
+                    from src.agents import PPOAgent
+                    from src.environments import TradingEnvironment
+                    from src.data import prepare_features
                     import torch
                     
                     # Load model checkpoint
@@ -3907,7 +3906,7 @@ def show_backtesting():
                     height=500
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
                 
                 # Price chart with trading signals
                 st.subheader("📈 Price Chart with Trading Signals")
@@ -3954,7 +3953,7 @@ def show_backtesting():
                     height=500
                 )
                 
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width='stretch')
                 
                 # Trade history table
                 if buy_signals or sell_signals:
@@ -3982,7 +3981,7 @@ def show_backtesting():
                     
                     if all_trades:
                         trades_df = pd.DataFrame(all_trades)
-                        st.dataframe(trades_df, use_container_width=True, hide_index=True)
+                        st.dataframe(trades_df, width='stretch', hide_index=True)
                 
                 st.success("✅ Backtest completed successfully!")
                 if agent is not None:
@@ -4015,7 +4014,7 @@ def show_live_trading():
     # Initialize portfolio manager
     if 'portfolio_manager' not in st.session_state:
         try:
-            from data import DataClient
+            from src.data import DataClient
             from trading.portfolio_manager import PortfolioManager, OrderSide, OrderType
             
             # Initialize data client for live prices
@@ -4145,7 +4144,7 @@ def show_live_trading():
             return ''
         
         styled_df = positions_df.style.map(style_pnl, subset=['P&L', 'P&L %'])
-        st.dataframe(styled_df, use_container_width=True)
+        st.dataframe(styled_df, width='stretch')
     else:
         st.info("No open positions")
     
@@ -4204,7 +4203,7 @@ def show_live_trading():
         return ''
     
     styled_quotes = quotes_df.style.map(style_change, subset=['Change', 'Change %']).map(style_signal, subset=['AI Signal'])
-    st.dataframe(styled_quotes, use_container_width=True)
+    st.dataframe(styled_quotes, width='stretch')
     
     # Trading controls
     st.subheader("Manual Trading")
@@ -4419,7 +4418,7 @@ ai-ppo/
         return ''
     
     styled_models = models_df.style.map(style_status, subset=['Status']).map(style_type, subset=['Type'])
-    st.dataframe(styled_models, use_container_width=True)
+    st.dataframe(styled_models, width='stretch')
     
     # Enhanced Model actions
     st.subheader("🛠️ Model Actions")
@@ -4455,7 +4454,7 @@ ai-ppo/
         col1_1, col1_2 = st.columns(2)
         
         with col1_1:
-            if st.button("📊 Analyze Model", use_container_width=True):
+            if st.button("📊 Analyze Model", width='stretch'):
                 with st.spinner(f"Analyzing {selected_model}..."):
                     time.sleep(1)  # Simulate analysis
                     st.success("✅ Model analysis complete!")
@@ -4467,10 +4466,10 @@ ai-ppo/
                             'Value': ['~850K', '10,000', '0.245', '✅ Good']
                         }
                         analysis_df = pd.DataFrame(analysis_data)
-                        st.dataframe(analysis_df, use_container_width=True)
+                        st.dataframe(analysis_df, width='stretch')
         
         with col1_2:
-            if st.button("� Load Model", use_container_width=True, type="primary"):
+            if st.button("� Load Model", width='stretch', type="primary"):
                 with st.spinner(f"Loading {selected_model}..."):
                     time.sleep(1)  # Simulate loading
                     st.success(f"✅ {selected_model} loaded successfully!")
@@ -4492,7 +4491,7 @@ ai-ppo/
             )
         
         with col_rename2:
-            if st.button("✏️ Rename", use_container_width=True, disabled=not new_name):
+            if st.button("✏️ Rename", width='stretch', disabled=not new_name):
                 if new_name and selected_model:
                     old_path = os.path.join(model_dir, selected_model)
                     
@@ -4525,7 +4524,7 @@ ai-ppo/
             with col1_1:
                 confirm_delete = st.checkbox(f"I confirm deletion of {selected_model}")
             with col1_2:
-                if st.button("🗑️ Delete", use_container_width=True, disabled=not confirm_delete):
+                if st.button("🗑️ Delete", width='stretch', disabled=not confirm_delete):
                     st.error(f"Would delete {selected_model} (Demo mode - not actually deleted)")
     
     with col2:
@@ -4560,7 +4559,7 @@ ai-ppo/
         export_model = st.selectbox("Select Model to Export", model_files, key="export_model")
         export_format = st.selectbox("Export Format", ["PyTorch (.pt)", "ONNX (.onnx)", "Compressed (.zip)"])
         
-        if st.button("📤 Export Model", use_container_width=True):
+    if st.button("📤 Export Model", width='stretch'):
             with st.spinner(f"Exporting {export_model}..."):
                 time.sleep(2)  # Simulate export
                 st.success(f"✅ {export_model} exported successfully!")
@@ -4579,7 +4578,7 @@ ai-ppo/
             st.info(f"📁 Selected file: {uploaded_file.name}")
             st.info(f"📊 File size: {len(uploaded_file.getvalue()) / (1024*1024):.2f} MB")
             
-            if st.button("📥 Import Model", use_container_width=True, type="primary"):
+            if st.button("📥 Import Model", width='stretch', type="primary"):
                 with st.spinner("Importing model..."):
                     time.sleep(2)  # Simulate import
                     st.success(f"✅ {uploaded_file.name} imported successfully!")
@@ -4591,7 +4590,7 @@ ai-ppo/
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📦 Backup All Models", use_container_width=True):
+        if st.button("📦 Backup All Models", width='stretch'):
             with st.spinner("Creating backup..."):
                 time.sleep(3)  # Simulate backup
                 backup_name = f"model_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
@@ -4599,7 +4598,7 @@ ai-ppo/
     
     with col2:
         backup_file = st.file_uploader("Restore from Backup", type=['zip'])
-        if backup_file and st.button("🔄 Restore Backup", use_container_width=True):
+        if backup_file and st.button("🔄 Restore Backup", width='stretch'):
             with st.spinner("Restoring models..."):
                 time.sleep(3)  # Simulate restore
                 st.success("✅ Models restored successfully!")

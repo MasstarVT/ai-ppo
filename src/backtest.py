@@ -13,11 +13,11 @@ from datetime import datetime
 # Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from data import DataClient, prepare_features
-from agents import PPOAgent
-from evaluation.backtesting import Backtester, WalkForwardAnalysis
-from visualization.plots import TradingVisualizer
-from utils import ConfigManager, setup_logging, format_percentage, format_currency
+from src.data import DataClient, prepare_features
+from src.agents import PPOAgent
+from src.evaluation.backtesting import Backtester, WalkForwardAnalysis
+from src.visualization.plots import TradingVisualizer
+from src.utils import ConfigManager, setup_logging, format_percentage, format_currency
 
 logger = logging.getLogger(__name__)
 
