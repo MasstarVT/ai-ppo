@@ -1,0 +1,6 @@
+performance:
+  compile_model: false
+  non_blocking: false
+  num_threads: 16
+  pin_memory: false
+  use_mixed_precision: false

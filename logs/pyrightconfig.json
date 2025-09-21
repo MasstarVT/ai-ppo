@@ -1,0 +1,18 @@
+{
+  "venvPath": "z:/GitHub/ai-ppo",
+  "venv": ".venv",
+  "reportMissingImports": true,
+  "typeCheckingMode": "off",
+  "executionEnvironments": [
+    {
+      "root": "./src",
+      "extraPaths": ["./src", "."],
+      "pythonVersion": "3.13"
+    },
+    {
+      "root": ".",
+      "extraPaths": ["./src", "."],
+      "pythonVersion": "3.13"
+    }
+  ]
+}
