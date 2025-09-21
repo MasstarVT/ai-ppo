@@ -180,16 +180,13 @@ def create_default_config() -> Dict[str, Any]:
     """Create default configuration."""
     return {
         'trading': {
-            'symbols': ['BTCUSDT'],
-            'timeframe': '5m',
+            'symbols': ['AAPL', 'MSFT', 'GOOGL'],
+            'timeframe': '1h',
             'initial_balance': 10000,
             'max_position_size': 0.1,
             'max_position_days': 30,
             'transaction_cost': 0.001,
             'slippage': 0.0005
-        },
-        'data_source': {
-            'provider': 'binance'  # Use Binance with credentials from .env
         },
         'tradingview': {
             'provider': 'yfinance'
@@ -213,7 +210,6 @@ def create_default_config() -> Dict[str, Any]:
         },
         'training': {
             'total_timesteps': 1000000,
-            'data_period': '1y',  # Use 1 year for Binance crypto data
             'eval_freq': 10000,
             'n_eval_episodes': 10,
             'save_freq': 50000,

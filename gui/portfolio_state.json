@@ -1,0 +1,23 @@
+{
+  "cash_balance": 10000,
+  "initial_balance": 10000,
+  "positions": {},
+  "orders": {
+    "BTCUSDT_buy_20250921_063954": {
+      "id": "BTCUSDT_buy_20250921_063954",
+      "symbol": "BTCUSDT",
+      "side": "OrderSide.BUY",
+      "order_type": "OrderType.LIMIT",
+      "quantity": 0.01,
+      "price": 115659.45,
+      "status": "OrderStatus.PENDING",
+      "created_at": "2025-09-21T06:39:54.951575",
+      "filled_at": null,
+      "filled_price": null,
+      "filled_quantity": 0.0
+    }
+  },
+  "trades": [],
+  "start_date": "2025-09-20T23:34:47.468193",
+  "last_saved": "2025-09-21T06:39:55.176480"
+}
