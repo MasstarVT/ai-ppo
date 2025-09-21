@@ -1,0 +1,14 @@
+trading:
+  timeframe: '5m'
+  symbols: ['BTCUSDT']
+  commission: 0.001
+
+data_provider: 'binance'
+
+training:
+  data_period: '1y'
+  lookback_window: 20
+  feature_engineering:
+    technical_indicators: true
+    price_features: true
+    volume_features: true

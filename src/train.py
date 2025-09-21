@@ -79,7 +79,7 @@ class TradingTrainer:
         try:
             symbols = self.config.get('trading', {}).get('symbols', ['AAPL'])
             period = self.config.get('training', {}).get('data_period', '2y')
-            interval = self.config.get('trading', {}).get('timeframe', '1h')
+            interval = self.config.get('trading', {}).get('timeframe', '5m')
             
             # Fetch data for all symbols
             with Timer("Data fetching"):

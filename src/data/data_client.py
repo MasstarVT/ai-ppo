@@ -1,6 +1,6 @@
 """
 Data client for fetching stock market data from various providers with performance optimizations.
-Since TradingView doesn't have an official public API, we use alternative providers.
+Supports YFinance, Alpha Vantage, and Alpaca Markets for comprehensive market data access.
 """
 
 import pandas as pd
@@ -17,6 +17,25 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pickle
 import os
+
+# Import Alpaca clients
+try:
+    from alpaca.trading.client import TradingClient
+    from alpaca.data.historical import StockHistoricalDataClient
+    from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
+    from alpaca.data.timeframe import TimeFrame
+    ALPACA_AVAILABLE = True
+except ImportError:
+    ALPACA_AVAILABLE = False
+    logging.warning("Alpaca SDK not available. Install alpaca-py to use Alpaca data provider.")
+
+# Import Binance client
+try:
+    from binance.client import Client as BinanceClient
+    BINANCE_AVAILABLE = True
+except ImportError:
+    BINANCE_AVAILABLE = False
+    logging.warning("Binance SDK not available. Install python-binance to use Binance data provider.")
 
 # Set up optimized logging for data operations
 logger = logging.getLogger(__name__)
@@ -381,6 +400,291 @@ class AlphaVantageProvider(DataProvider):
             return {}
 
 
+class AlpacaProvider(DataProvider):
+    """Alpaca Markets data provider for stocks with real-time capabilities."""
+    
+    def __init__(self, api_key: str, secret_key: str, paper: bool = True):
+        if not ALPACA_AVAILABLE:
+            raise ImportError("Alpaca SDK not available. Install alpaca-py to use Alpaca data provider.")
+        
+        self.api_key = api_key
+        self.secret_key = secret_key
+        self.paper = paper
+        self.name = "alpaca"
+        
+        # Initialize Alpaca clients
+        self.trading_client = TradingClient(
+            api_key=api_key,
+            secret_key=secret_key,
+            paper=paper
+        )
+        
+        self.data_client = StockHistoricalDataClient(
+            api_key=api_key,
+            secret_key=secret_key
+        )
+        
+        # Verify connection
+        try:
+            account = self.trading_client.get_account()
+            logger.info(f"Connected to Alpaca account: {account.id} (Paper: {paper})")
+        except Exception as e:
+            logger.error(f"Failed to connect to Alpaca: {e}")
+            raise
+    
+    @rate_limit(max_calls_per_minute=200)  # Alpaca has generous rate limits
+    @retry_on_failure(max_retries=3, backoff_factor=0.5)
+    def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1h") -> pd.DataFrame:
+        """Get historical data from Alpaca Markets."""
+        try:
+            # Map period to start date
+            end_date = datetime.now()
+            if period == "1d":
+                start_date = end_date - timedelta(days=1)
+            elif period == "5d":
+                start_date = end_date - timedelta(days=5)
+            elif period == "1mo":
+                start_date = end_date - timedelta(days=30)
+            elif period == "3mo":
+                start_date = end_date - timedelta(days=90)
+            elif period == "6mo":
+                start_date = end_date - timedelta(days=180)
+            elif period == "1y":
+                start_date = end_date - timedelta(days=365)
+            elif period == "2y":
+                start_date = end_date - timedelta(days=730)
+            else:
+                start_date = end_date - timedelta(days=365)  # Default to 1 year
+            
+            # Map interval to Alpaca TimeFrame
+            timeframe_map = {
+                "1m": TimeFrame.Minute,
+                "5m": TimeFrame(5, "Min"),
+                "15m": TimeFrame(15, "Min"),
+                "30m": TimeFrame(30, "Min"),
+                "1h": TimeFrame.Hour,
+                "1d": TimeFrame.Day,
+                "1wk": TimeFrame.Week,
+                "1mo": TimeFrame.Month
+            }
+            
+            timeframe = timeframe_map.get(interval, TimeFrame.Hour)
+            
+            # Create request
+            request = StockBarsRequest(
+                symbol_or_symbols=[symbol],
+                timeframe=timeframe,
+                start=start_date,
+                end=end_date
+            )
+            
+            # Get data
+            bars = self.data_client.get_stock_bars(request)
+            
+            # Check if we have data
+            if not bars or not hasattr(bars, 'df'):
+                logger.warning(f"No data found for symbol {symbol}")
+                return pd.DataFrame()
+            
+            # Get the DataFrame from the BarSet
+            df = bars.df
+            
+            if df.empty:
+                logger.warning(f"Empty DataFrame returned for symbol {symbol}")
+                return pd.DataFrame()
+            
+            # Filter for the requested symbol (DataFrame has MultiIndex with symbol)
+            if symbol in df.index.get_level_values(0):
+                symbol_data = df.loc[symbol]
+            else:
+                logger.warning(f"Symbol {symbol} not found in returned data")
+                return pd.DataFrame()
+            
+            # Rename columns to match expected format
+            if 'close' in symbol_data.columns:
+                symbol_data = symbol_data.rename(columns={
+                    'open': 'Open',
+                    'high': 'High', 
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
+                })
+            
+            # Ensure index is named correctly
+            symbol_data.index.name = 'datetime'
+            
+            # Remove any rows with NaN values
+            symbol_data = symbol_data.dropna()
+            
+            logger.info(f"Successfully fetched {len(symbol_data)} rows of data for {symbol} from Alpaca")
+            return symbol_data
+            
+        except Exception as e:
+            logger.error(f"Error fetching Alpaca historical data for {symbol}: {e}")
+            return pd.DataFrame()
+    
+    @rate_limit(max_calls_per_minute=200)
+    @retry_on_failure(max_retries=2, backoff_factor=0.5)
+    def get_realtime_data(self, symbol: str) -> Dict:
+        """Get real-time quote data from Alpaca."""
+        try:
+            request = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
+            quotes = self.data_client.get_stock_latest_quote(request)
+            
+            if symbol not in quotes:
+                logger.warning(f"No quote data found for symbol {symbol}")
+                return {}
+            
+            quote = quotes[symbol]
+            
+            # Calculate change (we don't have previous close directly, so we estimate)
+            current_price = quote.ask_price if quote.ask_price > 0 else quote.bid_price
+            
+            return {
+                'symbol': symbol,
+                'price': current_price,
+                'bid_price': quote.bid_price,
+                'ask_price': quote.ask_price,
+                'bid_size': quote.bid_size,
+                'ask_size': quote.ask_size,
+                'timestamp': quote.timestamp,
+                'exchange': quote.ask_exchange
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fetching Alpaca real-time data for {symbol}: {e}")
+            return {}
+
+
+class BinanceProvider(DataProvider):
+    """Binance.US data provider for cryptocurrency data."""
+    
+    def __init__(self, api_key: str, secret_key: str):
+        self.api_key = api_key
+        self.secret_key = secret_key
+        self.name = "binance_us"
+        self.client = None
+        self._initialize_client()
+    
+    def _initialize_client(self):
+        """Initialize Binance.US client."""
+        try:
+            # Always use Binance.US (tld='us')
+            self.client = BinanceClient(
+                self.api_key, 
+                self.secret_key,
+                tld='us'  # Use Binance.US
+            )
+            logger.info("Initialized Binance.US client")
+                
+        except Exception as e:
+            logger.error(f"Failed to initialize Binance.US client: {e}")
+            raise
+    
+    @rate_limit(max_calls_per_minute=1200)  # Binance has generous limits
+    @retry_on_failure(max_retries=3, backoff_factor=1.0)
+    def get_historical_data(self, symbol: str, period: str = '1y', interval: str = '5m') -> pd.DataFrame:
+        """Get historical data from Binance."""
+        try:
+            if not self.client:
+                self._initialize_client()
+            
+            # Map interval to Binance format
+            interval_map = {
+                '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h',
+                '4h': '4h', '1d': '1d', '1w': '1w', '1M': '1M'
+            }
+            binance_interval = interval_map.get(interval, '1d')
+            
+            # Calculate start time based on period
+            period_map = {
+                '1d': '1 day ago UTC',
+                '5d': '5 days ago UTC', 
+                '1mo': '1 month ago UTC',
+                '3mo': '3 months ago UTC',
+                '6mo': '6 months ago UTC',
+                '1y': '1 year ago UTC',
+                '2y': '2 years ago UTC',
+                '5y': '5 years ago UTC'
+            }
+            start_str = period_map.get(period, '1 year ago UTC')
+            
+            # Get klines (candlestick data) from Binance
+            # DEBUG: Let's test with different strategies based on interval and period
+            print(f"🔍 [BINANCE DEBUG] Requesting: {symbol}, {binance_interval}, {start_str}")
+            
+            try:
+                klines = self.client.get_historical_klines(
+                    symbol, binance_interval, start_str
+                )
+                print(f"🔍 [BINANCE DEBUG] Binance API returned {len(klines) if klines else 0} raw klines")
+            except Exception as e:
+                print(f"🔍 [BINANCE DEBUG] API Error: {e}")
+                klines = []
+            
+            if not klines:
+                logger.warning(f"No data returned from Binance for {symbol}")
+                return pd.DataFrame()
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(klines, columns=[
+                'timestamp', 'Open', 'High', 'Low', 'Close', 'Volume',
+                'close_time', 'quote_asset_volume', 'number_of_trades',
+                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+            ])
+            
+            # Convert timestamp to datetime
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            
+            # Convert price columns to float
+            price_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            for col in price_columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Keep only the essential columns
+            df = df[price_columns]
+            
+            # Remove any rows with NaN values
+            df = df.dropna()
+            
+            logger.info(f"Successfully fetched {len(df)} rows of data for {symbol} from Binance")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error fetching Binance historical data for {symbol}: {e}")
+            return pd.DataFrame()
+    
+    @rate_limit(max_calls_per_minute=1200)
+    @retry_on_failure(max_retries=2, backoff_factor=0.5)
+    def get_realtime_data(self, symbol: str) -> Dict:
+        """Get real-time ticker data from Binance."""
+        try:
+            if not self.client:
+                self._initialize_client()
+                
+            ticker = self.client.get_ticker(symbol=symbol)
+            
+            return {
+                'symbol': symbol,
+                'price': float(ticker['lastPrice']),
+                'bid_price': float(ticker['bidPrice']),
+                'ask_price': float(ticker['askPrice']),
+                'bid_size': float(ticker['bidQty']),
+                'ask_size': float(ticker['askQty']),
+                'volume': float(ticker['volume']),
+                'high_24h': float(ticker['highPrice']),
+                'low_24h': float(ticker['lowPrice']),
+                'change_24h': float(ticker['priceChange']),
+                'change_percent_24h': float(ticker['priceChangePercent']),
+                'timestamp': pd.Timestamp.now()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fetching Binance real-time data for {symbol}: {e}")
+            return {}
+
+
 class DataClient:
     """Main data client that manages different providers."""
     
@@ -390,7 +694,7 @@ class DataClient:
     
     def _initialize_provider(self) -> DataProvider:
         """Initialize the data provider based on configuration."""
-        provider_name = self.config.get('tradingview', {}).get('provider', 'yfinance')
+        provider_name = self.config.get('data_source', {}).get('provider', 'yfinance')
         
         if provider_name == 'yfinance':
             return YFinanceProvider()
@@ -399,14 +703,60 @@ class DataClient:
             if not api_key:
                 raise ValueError("Alpha Vantage API key is required")
             return AlphaVantageProvider(api_key)
+        elif provider_name == 'alpaca':
+            # Try to get Alpaca credentials from config first, then environment
+            alpaca_config = self.config.get('data_providers', {}).get('alpaca', {})
+            api_key = alpaca_config.get('api_key') or os.getenv('ALPACA_API_KEY')
+            secret_key = alpaca_config.get('secret_key') or os.getenv('ALPACA_SECRET_KEY')
+            paper = alpaca_config.get('paper', True)
+            
+            if not api_key or not secret_key:
+                # Load from .env file if not found
+                from dotenv import load_dotenv
+                load_dotenv()
+                api_key = api_key or os.getenv('ALPACA_API_KEY')
+                secret_key = secret_key or os.getenv('ALPACA_SECRET_KEY')
+            
+            if not api_key or not secret_key:
+                raise ValueError("Alpaca API key and secret key are required. Add them to .env file or configuration.")
+            
+            logger.info(f"Using Alpaca credentials from {'config' if alpaca_config.get('api_key') else 'environment'}")
+            return AlpacaProvider(api_key, secret_key, paper)
+        elif provider_name == 'binance':
+            # Get Binance.US credentials from config or environment
+            binance_config = self.config.get('data_providers', {}).get('binance', {})
+            api_key = binance_config.get('api_key') or os.getenv('BINANCE_API_KEY')
+            secret_key = binance_config.get('secret_key') or os.getenv('BINANCE_SECRET_KEY')
+            
+            if not api_key or not secret_key:
+                # Load from .env file if not found
+                from dotenv import load_dotenv
+                load_dotenv()
+                api_key = api_key or os.getenv('BINANCE_API_KEY')
+                secret_key = secret_key or os.getenv('BINANCE_SECRET_KEY')
+            
+            if not api_key or not secret_key or api_key == 'your_binance_api_key_here':
+                raise ValueError("Binance.US API key and secret key are required. Add them to .env file or configuration.")
+            
+            logger.info(f"Using Binance.US credentials from {'config' if binance_config.get('api_key') else 'environment'}")
+            return BinanceProvider(api_key, secret_key)
         else:
             raise ValueError(f"Unsupported data provider: {provider_name}")
+    
+    def get_available_providers(self) -> List[str]:
+        """Get list of available data providers."""
+        providers = ['yfinance', 'alphavantage']
+        if ALPACA_AVAILABLE:
+            providers.append('alpaca')
+        if BINANCE_AVAILABLE:
+            providers.append('binance')
+        return providers
     
     def get_historical_data(
         self, 
         symbol: str, 
         period: str = "1y", 
-        interval: str = "1h"
+        interval: str = "5m"
     ) -> pd.DataFrame:
         """Get historical price data."""
         logger.info(f"Fetching historical data for {symbol} (period={period}, interval={interval})")
@@ -416,7 +766,7 @@ class DataClient:
         self, 
         symbols: List[str], 
         period: str = "1y", 
-        interval: str = "1h",
+        interval: str = "5m",
         max_workers: int = 4
     ) -> Dict[str, pd.DataFrame]:
         """Get historical data for multiple symbols with parallel processing."""

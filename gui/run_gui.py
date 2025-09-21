@@ -10,14 +10,18 @@ import sys
 import subprocess
 import time
 import socket
+import logging
 
 # Setup optimized logging (only enable debug if needed)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from debug_config import setup_debug_logging
 
 # Enable debug logging only if environment variable is set
 debug_mode = os.getenv('AI_PPO_DEBUG', 'false').lower() == 'true'
-setup_debug_logging(enable_debug=debug_mode)
+if debug_mode:
+    logging.basicConfig(level=logging.DEBUG)
+    print("🔍 Debug mode enabled")
+else:
+    print("⚡ OPTIMIZED LOGGING ENABLED")
 
 def is_port_in_use(port):
     """Check if a port is already in use."""
@@ -31,20 +35,13 @@ def is_port_in_use(port):
 def main():
     """Main function to run the Streamlit app."""
     
-    # Add project root and src to path
+    # Add src to path
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    root_path = os.path.abspath(os.path.join(current_dir, '..'))
-    src_path = os.path.join(root_path, 'src')
-    for p in (root_path, src_path):
-        if p not in sys.path:
-            sys.path.insert(0, p)
-
-    # Set environment variables for child process
-    existing_pyspath = os.environ.get('PYTHONPATH', '')
-    parts = [root_path, src_path]
-    if existing_pyspath:
-        parts.append(existing_pyspath)
-    os.environ['PYTHONPATH'] = os.pathsep.join(parts)
+    src_path = os.path.join(current_dir, '..', 'src')
+    sys.path.insert(0, src_path)
+    
+    # Set environment variables
+    os.environ['PYTHONPATH'] = src_path
     
     # Path to the main app
     app_path = os.path.join(current_dir, 'app.py')
@@ -65,20 +62,12 @@ def main():
     print(f"🚀 Starting Streamlit on port {available_port}...")
     print(f"🌐 URL: http://localhost:{available_port}")
     
-    # Run Streamlit
-    try:
-        subprocess.run([
-            sys.executable, '-m', 'streamlit', 'run', app_path,
-            '--server.port', str(available_port),
-            '--server.address', 'localhost',
-            '--browser.gatherUsageStats', 'false'
-        ], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error running Streamlit: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print("\n🛑 Streamlit app stopped by user")
-        sys.exit(0)
+    # Change to the GUI directory
+    os.chdir(current_dir)
+    
+    # Use os.system to run Streamlit (this avoids the 95% hang issue)
+    command = f'streamlit run app.py --server.port {available_port} --server.address localhost --browser.gatherUsageStats false'
+    os.system(command)
 
 if __name__ == "__main__":
     main()

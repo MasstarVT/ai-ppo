@@ -1,17 +1,21 @@
 # Trading Configuration
 trading:
   symbols: ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-  timeframe: "1h"  # 1m, 5m, 15m, 1h, 4h, 1d
+  timeframe: "5m"  # 1m, 5m, 15m, 1h, 4h, 1d
   initial_balance: 10000
   max_position_size: 0.1  # 10% of portfolio per trade
   transaction_cost: 0.001  # 0.1% per trade
   slippage: 0.0005  # 0.05%
   
-# TradingView API Configuration
+# Data Source Configuration
+data_source:
+  provider: "Alpaca"  # yfinance, alphavantage, alpaca
+  
+# TradingView API Configuration (Legacy - kept for compatibility)
 tradingview:
   # Note: TradingView doesn't have official API, using alternative data sources
-  # You can use yfinance, Alpha Vantage, or other providers
-  provider: "yfinance"  # yfinance, alphavantage, polygon
+  # You can use yfinance, Alpha Vantage, Alpaca or other providers
+  provider: "yfinance"  # yfinance, alphavantage, alpaca
   api_key: ""  # Required for some providers
   websocket_url: ""
   
@@ -20,6 +24,12 @@ data_providers:
   alpha_vantage:
     api_key: "YOUR_ALPHA_VANTAGE_API_KEY"
     base_url: "https://www.alphavantage.co/query"
+  
+  alpaca:
+    api_key: "YOUR_ALPACA_API_KEY"
+    secret_key: "YOUR_ALPACA_SECRET_KEY"
+    paper: true  # Set to false for live trading
+    base_url: "https://paper-api.alpaca.markets"  # or https://api.alpaca.markets for live
   
   polygon:
     api_key: "YOUR_POLYGON_API_KEY"

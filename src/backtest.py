@@ -72,7 +72,7 @@ def main():
             try:
                 # Fetch data
                 period = config.get('backtesting', {}).get('data_period', '5y')
-                interval = config.get('trading', {}).get('timeframe', '1h')
+                interval = config.get('trading', {}).get('timeframe', '5m')
                 
                 raw_data = data_client.get_historical_data(symbol, period, interval)
                 

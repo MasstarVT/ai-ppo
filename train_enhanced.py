@@ -13,77 +13,106 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-# Completely disable logging to prevent buffer detachment issues
+# Load environment variables from .env file FIRST
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Loaded .env file with Binance credentials")
+except ImportError:
+    print("❌ dotenv not available, using system environment only")
+
+# Setup proper logging for debugging crashes
 log_dir = os.path.join(os.path.dirname(__file__), 'logs')
 os.makedirs(log_dir, exist_ok=True)
 
-# Disable all logging globally to prevent any buffer issues
-logging.disable(logging.CRITICAL)
+# Configure logging to file and console
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(log_dir, 'training_debug.log')),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
-# Create a dummy logger that does nothing
-class DummyLogger:
-    def info(self, msg): pass
-    def warning(self, msg): pass
-    def error(self, msg): pass
-    def debug(self, msg): pass
-
-logger = DummyLogger()
-print("🔇 All logging disabled to prevent buffer issues")
+logger = logging.getLogger(__name__)
+logger.info("=== LOGGING ENABLED FOR CRASH DEBUGGING ===")
 
 print("=== Enhanced Training Script Starting...")
 
-# Fix encoding issues on Windows  
-if sys.platform == "win32":
-    import codecs
-    import locale
-    try:
-        # Set console encoding to UTF-8
-        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach(), errors='replace')
-        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach(), errors='replace')
-    except Exception:
-        # Fallback if encoding setup fails
-        pass
-
 print("*** Enhanced Training Script Starting...")
 
-# Fix encoding issues on Windows
+# Simple encoding fix for Windows without buffer detachment
 if sys.platform == "win32":
-    import codecs
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+    import locale
+    # Just set the locale, don't detach buffers
+    try:
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+    except:
+        pass  # Ignore if locale not available
 
-# Add project root and src to path
+# Add src to path
 current_dir = Path(__file__).parent
-root_path = current_dir
 src_path = current_dir / "src"
-for p in (str(root_path), str(src_path)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+sys.path.insert(0, str(src_path))
 
 print(">>> Loading modules...")
 
 try:
-    from src.agents.ppo_agent import PPOAgent
-    from src.environments.trading_env import TradingEnvironment
-    from src.data.data_client import DataClient
-    from src.data.indicators import prepare_features
-    from src.utils.config import ConfigManager, create_default_config
+    from agents.ppo_agent import PPOAgent
+    from environments.trading_env import TradingEnvironment
+    from data.data_client import DataClient
+    from utils.config import ConfigManager, create_default_config
     print("[OK] All modules loaded")
 except ImportError as e:
-    # Fallback using dynamic import to avoid static analyzer errors
-    try:
-        import importlib
-        PPOAgent = importlib.import_module('agents.ppo_agent').PPOAgent
-        TradingEnvironment = importlib.import_module('environments.trading_env').TradingEnvironment
-        DataClient = importlib.import_module('data.data_client').DataClient
-        prepare_features = importlib.import_module('data.indicators').prepare_features
-        cfg_mod = importlib.import_module('utils.config')
-        ConfigManager = getattr(cfg_mod, 'ConfigManager')
-        create_default_config = getattr(cfg_mod, 'create_default_config')
-        print("[OK] Modules loaded via dynamic fallback imports")
-    except Exception as e2:
-        print(f"[ERROR] Import error: {e}; fallback failed: {e2}")
-        sys.exit(1)
+    print(f"[ERROR] Import error: {e}")
+    sys.exit(1)
+
+def configure_data_provider(config):
+    """
+    Auto-configure data provider based on symbols in config.
+    
+    Args:
+        config (dict): Training configuration
+        
+    Returns:
+        dict: Updated configuration with proper data provider
+    """
+    symbols = config.get('trading', {}).get('symbols', ['BTCUSDT'])
+    
+    # Auto-configure data provider for crypto symbols
+    crypto_symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOGEUSDT', 'XRPUSDT', 'LTCUSDT', 'BCHUSDT', 'LINKUSDT', 'DOTUSDT', 'UNIUSDT',
+                      'BTC-USD', 'ETH-USD', 'ADA-USD', 'DOGE-USD', 'XRP-USD', 'LTC-USD', 'BCH-USD', 'LINK-USD', 'DOT-USD']
+    
+    if any(symbol in crypto_symbols for symbol in symbols):
+        print(f"[AUTO] Detected crypto symbols: {symbols}")
+        
+        # Check if using YFinance format
+        if any('-USD' in symbol for symbol in symbols):
+            print(f"[AUTO] Configuring YFinance provider for crypto symbols")
+            if 'data_source' not in config:
+                config['data_source'] = {}
+            config['data_source']['provider'] = 'yfinance'
+        else:
+            print(f"[AUTO] Configuring REAL Binance provider for crypto symbols")
+            
+            # Use Binance with REAL credentials
+            if 'data_source' not in config:
+                config['data_source'] = {}
+            config['data_source']['provider'] = 'binance'
+            
+            # Load Binance credentials from environment or existing config
+            if 'data_providers' not in config:
+                config['data_providers'] = {}
+            if 'binance' not in config['data_providers']:
+                config['data_providers']['binance'] = {}
+            
+            # The DataClient will load credentials from .env file or environment variables
+            print(f"[INFO] Using REAL Binance API for crypto symbols: {symbols}")
+    else:
+        print(f"[AUTO] Using default provider for stock symbols: {symbols}")
+    
+    return config
 
 def rename_model(old_path, new_name):
     """
@@ -242,6 +271,9 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
     if config is None:
         config = create_default_config()
     
+    # Auto-configure data provider based on symbols
+    config = configure_data_provider(config)
+    
     # Apply network configuration if provided
     if network_config:
         if 'network' not in config:
@@ -256,13 +288,16 @@ def continue_training(model_path, additional_timesteps, config=None, save_path=N
     
     # Load training data
     try:
+        from data.data_client import DataClient
+        from data.indicators import prepare_features
+        
         # Initialize data client
         data_client = DataClient(config)
         
         # Get symbols and parameters from config
         symbols = config.get('trading', {}).get('symbols', ['AAPL'])
         period = config.get('training', {}).get('data_period', '1y')
-        interval = config.get('trading', {}).get('timeframe', '1h')
+        interval = config.get('trading', {}).get('timeframe', '5m')
         
         print(f"[DATA] Loading data for symbols: {symbols}")
         
@@ -446,6 +481,9 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
     if config is None:
         config = create_default_config()
     
+    # Auto-configure data provider based on symbols
+    config = configure_data_provider(config)
+    
     # Apply network configuration if provided
     if network_config:
         if 'network' not in config:
@@ -460,13 +498,16 @@ def train_new_model(timesteps, config=None, save_path=None, network_config=None)
     
     # Load training data
     try:
+        from data.data_client import DataClient
+        from data.indicators import prepare_features
+        
         # Initialize data client
         data_client = DataClient(config)
         
         # Get symbols and parameters from config
         symbols = config.get('trading', {}).get('symbols', ['AAPL'])
         period = config.get('training', {}).get('data_period', '1y')
-        interval = config.get('trading', {}).get('timeframe', '1h')
+        interval = config.get('trading', {}).get('timeframe', '5m')
         
         print(f"[DATA] Loading data for symbols: {symbols}")
         
@@ -666,6 +707,9 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
     if config is None:
         config = create_default_config()
     
+    # Auto-configure data provider based on symbols
+    config = configure_data_provider(config)
+    
     # Apply network configuration if provided
     if network_config:
         if 'network' not in config:
@@ -677,61 +721,84 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
         print(f"       Activation: {config['network']['activation']}")
 
     print("[SETUP] Setting up training environment...")
-
+    logger.info("Starting training environment setup")
+    
     # Load training data
     try:
+        logger.info("Importing data modules")
+        from data.data_client import DataClient
+        from data.indicators import prepare_features
+        logger.info("Data modules imported successfully")
+        
         # Initialize data client
+        logger.info("Initializing DataClient")
         data_client = DataClient(config)
-
+        logger.info("DataClient initialized successfully")
+        
         # Get symbols and parameters from config
         symbols = config.get('trading', {}).get('symbols', ['AAPL'])
         period = config.get('training', {}).get('data_period', '1y')
-        interval = config.get('trading', {}).get('timeframe', '1h')
-
+        interval = config.get('trading', {}).get('timeframe', '5m')
+        
         print(f"[DATA] Loading data for symbols: {symbols}")
-
+        logger.info(f"Requesting data: symbols={symbols}, period={period}, interval={interval}")
+        
         # Fetch data for training
+        logger.info("Calling get_multiple_symbols_data...")
         raw_data = data_client.get_multiple_symbols_data(symbols, period, interval)
-
+        logger.info(f"Data fetch completed, got {len(raw_data) if raw_data else 0} symbols")
+        
         if not raw_data:
             raise ValueError("No data was fetched")
-
+        
         # Use the first symbol's data for training
         symbol = symbols[0]
         if symbol not in raw_data:
             symbol = list(raw_data.keys())[0]
-
+        
         df = raw_data[symbol]
         print(f"[INFO] Loaded {len(df)} bars for {symbol}")
-
+        logger.info(f"Using symbol {symbol} with {len(df)} bars")
+        
         # Prepare features
+        logger.info("Preparing features...")
         data = prepare_features(df, config)
         print(f"[OK] Prepared {len(data)} feature bars")
-
+        logger.info(f"Feature preparation complete: {len(data)} bars")
+        
     except Exception as e:
         print(f"[ERROR] Error loading data: {e}")
+        logger.error(f"Data loading failed: {e}", exc_info=True)
         return False
     
     # Create environment
     try:
+        logger.info("Creating TradingEnvironment...")
         env = TradingEnvironment(data, config)
         print("[OK] Trading environment created")
+        logger.info("TradingEnvironment created successfully")
     except Exception as e:
         print(f"[ERROR] Error creating environment: {e}")
+        logger.error(f"Environment creation failed: {e}", exc_info=True)
         return False
     
     # Create or load agent
     try:
+        logger.info("Getting environment dimensions...")
         obs_dim = env.observation_space.shape[0]
         action_dim = env.action_space.n
+        logger.info(f"Environment dimensions: obs_dim={obs_dim}, action_dim={action_dim}")
         
+        logger.info("Creating PPO agent...")
         agent = PPOAgent(obs_dim, action_dim, config)
+        logger.info("PPO agent created successfully")
         
         total_trained_timesteps = 0
         
         # Load existing model if provided
         if model_path and os.path.exists(model_path):
             print(f"[LOAD] Loading existing model from: {model_path}")
+            logger.info(f"Loading model from {model_path}")
             checkpoint = torch.load(model_path, map_location='cpu')
             
             if isinstance(checkpoint, dict):
@@ -740,22 +807,28 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
                     if hasattr(agent, 'value_net') and 'value_net_state_dict' in checkpoint:
                         agent.value_net.load_state_dict(checkpoint['value_net_state_dict'])
                     print("[OK] Model weights loaded from policy_net_state_dict format")
+                    logger.info("Model loaded from policy_net_state_dict format")
                 elif 'model_state_dict' in checkpoint:
                     agent.policy_net.load_state_dict(checkpoint['model_state_dict'])
                     print("[OK] Model weights loaded from model_state_dict format")
+                    logger.info("Model loaded from model_state_dict format")
                 
                 # Get previous training progress
                 total_trained_timesteps = checkpoint.get('total_timesteps', 0)
                 print(f"[INFO] Previously trained timesteps: {total_trained_timesteps:,}")
+                logger.info(f"Previous timesteps: {total_trained_timesteps}")
             
         print("[OK] PPO agent ready")
+        logger.info("PPO agent setup complete")
     except Exception as e:
         print(f"[ERROR] Error setting up agent: {e}")
+        logger.error(f"Agent setup failed: {e}", exc_info=True)
         return False
     
     # Start continuous training
     print("[START] Starting continuous training...")
     print("[DATA] Training progress (continuous mode):")
+    logger.info("Starting continuous training loop")
     
     current_timesteps = 0
     iteration = 0
@@ -765,6 +838,7 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
             # Check for stop conditions
             if os.path.exists(stop_file):
                 print(f"\n[STOP] Stop file '{stop_file}' detected. Stopping training gracefully...")
+                logger.info("Stop file detected, graceful shutdown")
                 os.remove(stop_file)
                 break
             
@@ -775,12 +849,14 @@ def continuous_training(model_path, config=None, save_interval=50000, checkpoint
             
             # Real training step - train for batch_timesteps
             print(f"  Iteration {iteration:4d} | Training {batch_timesteps} timesteps | Total: {total_timesteps:,}")
+            logger.info(f"Starting iteration {iteration}, batch_timesteps={batch_timesteps}, total={total_timesteps}")
             
             # Reset environment and train for this batch
             batch_step = 0
             episode = 0
             
             while batch_step < batch_timesteps:
+                logger.debug(f"Starting episode {episode+1}, batch_step={batch_step}")
                 # Reset environment for new episode
                 obs = env.reset()
                 episode_reward = 0
@@ -947,9 +1023,9 @@ def main():
         old_path, new_name = args.rename_model
         success = rename_model(old_path, new_name)
         if success:
-            print("🎉 Model renamed successfully!")
+            print("[SUCCESS] Model renamed successfully!")
         else:
-            print("💥 Model rename failed!")
+            print("[FAILED] Model rename failed!")
         sys.exit(0 if success else 1)
     
     # Validate arguments for training modes
@@ -1012,10 +1088,10 @@ def main():
         )
     
     if success:
-        print("🎉 Training completed successfully!")
+        print("[SUCCESS] Training completed successfully!")
         sys.exit(0)
     else:
-        print("💥 Training failed!")
+        print("[FAILED] Training failed!")
         sys.exit(1)
 
 if __name__ == "__main__":

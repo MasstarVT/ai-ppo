@@ -5,7 +5,15 @@ trading:
   symbols:
   - BTC/USDT
   - ETH/USDT
-  timeframe: 1h
+  - XRP/USDT
+  - SOLANA/USDT
+  - BNB/USDT
+  - DOGECOIN/USDT
+  - TRON/USDT
+  - POLKADOT/USDT
+  - AVALANCHE/USDT
+  - SHIBA/USDT
+  timeframe: 5m
   transaction_cost: 0.001
 
 environment:
